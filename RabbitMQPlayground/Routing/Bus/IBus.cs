@@ -1,12 +1,12 @@
-﻿using System;
+﻿using RabbitMQPlayground.Routing.Event;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public interface IBus : IActor, IPublisher
+    public interface IBus : IActor, IPublisher, ISubscriber, ICommandHandler
     { 
-        void Subscribe<TEvent>(ISubscription<TEvent> subscribe);
-        void Unsuscribe<TEvent>(ISubscription<TEvent> subscribe);
+
     }
 }

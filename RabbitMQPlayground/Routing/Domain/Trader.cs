@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using RabbitMQPlayground.Routing.Event;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -10,39 +12,40 @@ namespace RabbitMQPlayground.Routing.Domain
 
         private readonly IBus _bus;
 
-        public Trader(IBus bus)
+        public Trader(IEventSerializer eventSerializer)
         {
             CurrencyPairs = new List<CurrencyPair>();
 
-            _bus = bus;
+            _bus = new Bus("localhost", eventSerializer);
 
-            _bus.Subscribe(new Subscription<PriceChangedEvent>("FX", "*", Handle));
-        }
-
-        public void Handle(PriceChangedEvent @event)
-        {
-            var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == @event.AggregateId);
-
-            if(null== ccyPair)
+            _bus.Subscribe(new EventSubscription<PriceChangedEvent>("fx-events", "#", (@event) =>
             {
-                ccyPair = new CurrencyPair(@event.AggregateId);
-                CurrencyPairs.Add(ccyPair);
-            }
+                var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == @event.AggregateId);
 
-            ccyPair.Ask = @event.Ask;
-            ccyPair.Bid = @event.Bid;
+                if (null == ccyPair)
+                {
+                    ccyPair = new CurrencyPair(@event.AggregateId);
+                    CurrencyPairs.Add(ccyPair);
+                }
 
-            ccyPair.AppliedEvents.Add(@event);
+                ccyPair.Ask = @event.Ask;
+                ccyPair.Bid = @event.Bid;
+
+                ccyPair.AppliedEvents.Add(@event);
+
+            }));
+
+
         }
 
-        public void Emit(IEvent @event)
+        public void Emit(IEvent @event, string exchange)
         {
-            _bus.Emit(@event);
+            throw new NotImplementedException();
         }
 
-        public async Task<TResult> Send<TResult>(ICommand command)
+        public Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult
         {
-            return await _bus.Send<TResult>(command);
+            throw new NotImplementedException();
         }
     }
 }

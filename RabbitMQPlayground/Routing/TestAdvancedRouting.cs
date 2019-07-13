@@ -12,11 +12,12 @@ namespace RabbitMQPlayground.Routing
     [TestFixture]
     public class TestAdvancedRouting
     {
-
         [Test]
         public void ExpressionSerialization()
         {
-         
+
+
+
             var ev = new PriceChangedEvent("EUR/USD")
             {
                 Ask = 1.25,
@@ -31,7 +32,7 @@ namespace RabbitMQPlayground.Routing
                 Counterparty = "BNP"
             };
 
-           
+
 
             var match1 = Expression.Constant("SGCIB");
             var match2 = Expression.Constant("BNP");
@@ -64,17 +65,46 @@ namespace RabbitMQPlayground.Routing
         public async Task TestE2E()
         {
             var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
 
-            var bus = new Bus("localhost", serializer);
+            var fxEvents = "fx-events";
+            var fxCommands = "fx-commands";
 
-            var trader1 = new Trader(bus);
+        
+          
+            var market = new Market(bus2);
 
-            var result = await trader1.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD")
+            PriceChangedEvent receivedEvent = null;
+
+     
+            market.Subscribe(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(fxCommands, "#", (ev) =>
+            {
+              
+            }));
+
+            var emittedEvent = new PriceChangedEvent("EUR/USD")
             {
                 Ask = 1.25,
                 Bid = 1.15,
                 Counterparty = "SGCIB"
-            });
+            };
+
+            trader1.Emit(emittedEvent, "fx");
+
+            await Task.Delay(200);
+
+
+            Assert.AreEqual(emittedEvent.AggregateId, receivedEvent.AggregateId);
+            Assert.AreEqual(emittedEvent.Ask, receivedEvent.Ask);
+            Assert.AreEqual(emittedEvent.Bid, receivedEvent.Bid);
+            Assert.AreEqual(emittedEvent.Counterparty, receivedEvent.Counterparty);
+
+            //var result = await trader1.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD")
+            //{
+            //    Ask = 1.25,
+            //    Bid = 1.15,
+            //    Counterparty = "SGCIB"
+            //});
 
         }
 

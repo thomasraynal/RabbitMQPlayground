@@ -4,19 +4,19 @@ using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public class Subscription<TEvent> : ISubscription<TEvent>
+    public abstract class SubscriptionBase
     {
-        public Subscription(string exchange, string routingKey, Action<TEvent> onEvent)
+        public SubscriptionBase(string exchange, string routingKey)
         {
             Exchange = exchange;
             RoutingKey = routingKey;
-            OnEvent = onEvent;
+            SubscriptionId = Guid.NewGuid();
         }
 
         public string Exchange { get; }
 
         public string RoutingKey { get; }
 
-        public Action<TEvent> OnEvent { get; }
+        public Guid SubscriptionId { get; }
     }
 }
