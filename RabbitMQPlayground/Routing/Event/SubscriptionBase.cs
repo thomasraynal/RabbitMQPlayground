@@ -4,9 +4,9 @@ using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public abstract class SubscriptionBase
+    public abstract class EventSubscriptionBase : IEventSubscription
     {
-        public SubscriptionBase(string exchange, string routingKey)
+        public EventSubscriptionBase(string exchange, string routingKey)
         {
             Exchange = exchange;
             RoutingKey = routingKey;
@@ -18,5 +18,7 @@ namespace RabbitMQPlayground.Routing
         public string RoutingKey { get; }
 
         public Guid SubscriptionId { get; }
+
+        public Action<IEvent> OnEvent { get; protected set; }
     }
 }

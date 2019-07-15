@@ -6,19 +6,22 @@ using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.Routing.Domain
 {
-    public class Trader: IPublisher
+    public class Trader
     {
         public List<CurrencyPair> CurrencyPairs { get; }
 
         private readonly IBus _bus;
+        private readonly string _fxExchange;
 
-        public Trader(IEventSerializer eventSerializer)
+        public Trader(string fxExchange, string topic, IEventSerializer eventSerializer)
         {
             CurrencyPairs = new List<CurrencyPair>();
 
             _bus = new Bus("localhost", eventSerializer);
 
-            _bus.Subscribe(new EventSubscription<PriceChangedEvent>("fx-events", "#", (@event) =>
+            _fxExchange = fxExchange;
+
+            _bus.Subscribe(new EventSubscription<PriceChangedEvent>(fxExchange, topic, (@event) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == @event.AggregateId);
 
@@ -38,14 +41,14 @@ namespace RabbitMQPlayground.Routing.Domain
 
         }
 
-        public void Emit(IEvent @event, string exchange)
+        public void Emit(IEvent @event)
         {
-            throw new NotImplementedException();
+            _bus.Emit(@event, _fxExchange);
         }
 
-        public Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult
+        public async Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult
         {
-            throw new NotImplementedException();
+            return await _bus.Send<TCommandResult>(command, timeout);
         }
     }
 }

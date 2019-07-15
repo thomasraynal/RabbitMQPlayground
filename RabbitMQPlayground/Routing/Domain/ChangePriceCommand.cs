@@ -7,7 +7,7 @@ namespace RabbitMQPlayground.Routing.Domain
 {
     public class ChangePriceCommand : CommandBase
     {
-        public ChangePriceCommand(string aggregateId) : base(aggregateId)
+        public ChangePriceCommand(string aggregateId, string target) : base(aggregateId, target)
         {
         }
 

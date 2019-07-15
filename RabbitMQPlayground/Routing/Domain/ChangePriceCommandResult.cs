@@ -7,5 +7,6 @@ namespace RabbitMQPlayground.Routing.Domain
 {
     public class ChangePriceCommandResult : ICommandResult
     {
+        public string Market { get; set; }
     }
 }

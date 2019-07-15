@@ -2,6 +2,7 @@
 using RabbitMQPlayground.Routing.Domain;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
@@ -61,26 +62,42 @@ namespace RabbitMQPlayground.Routing
 
         }
 
+
         [Test]
-        public async Task TestE2E()
+        public async Task TestSendCommand()
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
 
-            var fxEvents = "fx-events";
-            var fxCommands = "fx-commands";
+            var fxEventExchange = "fx";
+            var marketName = "fxconnect";
 
-        
-          
-            var market = new Market(bus2);
+            var trader = new Trader(fxEventExchange, "#", eventSerializer);
+            var market = new Market(marketName, fxEventExchange, eventSerializer);
 
-            PriceChangedEvent receivedEvent = null;
-
-     
-            market.Subscribe(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(fxCommands, "#", (ev) =>
+            var command = new ChangePriceCommand("EUR/USD", marketName)
             {
-              
-            }));
+                Ask = 1.25,
+                Bid = 1.15,
+                Counterparty = "SGCIB"
+            };
+
+            var commmandResult = await trader.Send<ChangePriceCommandResult>(command, TimeSpan.Zero);
+
+            Assert.IsNotNull(commmandResult);
+            Assert.AreEqual(marketName, commmandResult.Market);
+
+        }
+
+        [Test]
+        public async Task TestConsumeEvent()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+
+            var fxEventExchange = "fx";
+
+            var trader = new Trader(fxEventExchange, "#", eventSerializer);
 
             var emittedEvent = new PriceChangedEvent("EUR/USD")
             {
@@ -89,22 +106,23 @@ namespace RabbitMQPlayground.Routing
                 Counterparty = "SGCIB"
             };
 
-            trader1.Emit(emittedEvent, "fx");
+            trader.Emit(emittedEvent);
 
             await Task.Delay(200);
 
+            Assert.AreEqual(1, trader.CurrencyPairs.Count);
 
-            Assert.AreEqual(emittedEvent.AggregateId, receivedEvent.AggregateId);
-            Assert.AreEqual(emittedEvent.Ask, receivedEvent.Ask);
-            Assert.AreEqual(emittedEvent.Bid, receivedEvent.Bid);
-            Assert.AreEqual(emittedEvent.Counterparty, receivedEvent.Counterparty);
+            var ccyPair = trader.CurrencyPairs.First();
 
-            //var result = await trader1.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD")
-            //{
-            //    Ask = 1.25,
-            //    Bid = 1.15,
-            //    Counterparty = "SGCIB"
-            //});
+            Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+            var appliedEvent = ccyPair.AppliedEvents.First() as PriceChangedEvent;
+
+            Assert.AreEqual(emittedEvent.AggregateId, ccyPair.Id);
+            Assert.AreEqual(emittedEvent.Ask, ccyPair.Ask);
+            Assert.AreEqual(emittedEvent.Bid, ccyPair.Bid);
+            Assert.AreEqual(emittedEvent.Counterparty, appliedEvent.Counterparty);
+
 
         }
 

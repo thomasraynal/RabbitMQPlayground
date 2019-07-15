@@ -10,14 +10,19 @@ namespace RabbitMQPlayground.Routing.Domain
     public class Market : IPublisher
     {
         private readonly IBus _bus;
+        private string _name;
 
         public List<CurrencyPair> CurrencyPairs { get; }
 
-        public Market(IEventSerializer eventSerializer)
+        public Market(string name, string fxExchange, IEventSerializer eventSerializer)
         {
             _bus = new Bus("localhost", eventSerializer);
 
-            _bus.Subscribe(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>("fx-commands", "#", (command) =>
+            _name = name;
+
+            CurrencyPairs = new List<CurrencyPair>();
+
+            _bus.Handle(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(_name, (command) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == command.AggregateId);
 
@@ -37,9 +42,12 @@ namespace RabbitMQPlayground.Routing.Domain
                     Ask = command.Ask,
                     Bid = command.Bid,
                     Counterparty = command.Counterparty,
-                }, "fx-events");
+                }, fxExchange);
 
-                return new ChangePriceCommandResult();
+                return new ChangePriceCommandResult()
+                {
+                    Market = _name
+                };
 
          
             }));

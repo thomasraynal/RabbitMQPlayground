@@ -4,8 +4,9 @@ using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public interface ICommand : IEvent
+    public interface IAggregateEvent
     {
-
+        string AggregateId { get; }
+        Type EventType { get; }
     }
 }

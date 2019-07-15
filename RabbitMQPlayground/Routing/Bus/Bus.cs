@@ -12,24 +12,18 @@ namespace RabbitMQPlayground.Routing
 {
     public class Bus : IBus
     {
+
         class CommandSubscriberDescriptor
         {
-            private readonly string _exchange;
-            private readonly string _routingKey;
-
-            public CommandSubscriberDescriptor(string exchange, string routingKey, EventingBasicConsumer consumer, string queueName)
+            public CommandSubscriberDescriptor(EventingBasicConsumer consumer, string queueName, ICommandSubscription subscription)
             {
-                _exchange = exchange;
-                _routingKey = routingKey;
-
-                Subscriptions = new List<ISubscription>();
                 Consumer = consumer;
                 QueueName = queueName;
+                Subscription = subscription;
             }
 
-            public string SubscriptionId => $"{_exchange}.{_routingKey}";
-
-            public List<ISubscription> Subscriptions { get; }
+            public string SubscriptionId => $"{QueueName}";
+            public ICommandSubscription Subscription { get; }
             public EventingBasicConsumer Consumer { get; }
             public string QueueName { get; }
         }
@@ -44,14 +38,14 @@ namespace RabbitMQPlayground.Routing
                 _exchange = exchange;
                 _routingKey = routingKey;
 
-                Subscriptions = new List<ISubscription>();
+                Subscriptions = new List<IEventSubscription>();
                 Consumer = consumer;
                 QueueName = queueName;
             }
 
             public string SubscriptionId => $"{_exchange}.{_routingKey}";
 
-            public List<ISubscription> Subscriptions { get; }
+            public List<IEventSubscription> Subscriptions { get; }
             public EventingBasicConsumer Consumer { get; }
             public string QueueName { get; }
         }
@@ -75,6 +69,7 @@ namespace RabbitMQPlayground.Routing
             _factory = new ConnectionFactory() { HostName = host };
             _connection = _factory.CreateConnection();
             _channel = _connection.CreateModel();
+            _commandResults = new Dictionary<string, TaskCompletionSource<ICommandResult>>();
 
         }
 
@@ -102,7 +97,7 @@ namespace RabbitMQPlayground.Routing
                                  body: body);
         }
 
-        private EventSubscriberDescriptor GetOrCreateSubscriberDescriptor(ISubscription subscription)
+        private EventSubscriberDescriptor GetOrCreateEventSubscriberDescriptor(IEventSubscription subscription)
         {
             var key = $"{subscription.Exchange}.{subscription.RoutingKey}";
 
@@ -134,7 +129,7 @@ namespace RabbitMQPlayground.Routing
 
                     foreach (var subscriber in subscriberDescriptor.Subscriptions)
                     {
-                        ((dynamic)subscriber).OnEvent(message);
+                        subscriber.OnEvent(message);
                     }
 
                 };
@@ -146,10 +141,10 @@ namespace RabbitMQPlayground.Routing
             return subscriberDescriptor;
         }
 
-
+    
         public void Subscribe<TEvent>(IEventSubscription<TEvent> subscription)
         {
-            var subscriberDescriptor = GetOrCreateSubscriberDescriptor(subscription);
+            var subscriberDescriptor = GetOrCreateEventSubscriberDescriptor(subscription);
             subscriberDescriptor.Subscriptions.Add(subscription);
         }
 
@@ -185,7 +180,10 @@ namespace RabbitMQPlayground.Routing
 
                     task.SetResult(message);
 
+                    _commandResults.Remove(correlationId);
+
                     _channel.QueueDeleteNoWait(queueName);
+
                 }
             };
 
@@ -204,7 +202,6 @@ namespace RabbitMQPlayground.Routing
             var replyQueueName = _channel.QueueDeclare().QueueName;
 
             var body = _eventSerializer.Serializer.Serialize(command);
-            var subject = _eventSerializer.GetSubject(command);
 
             properties.ContentType = command.GetType().ToString();
             properties.CorrelationId = correlationId;
@@ -212,13 +209,13 @@ namespace RabbitMQPlayground.Routing
 
             CreateResultHandler(replyQueueName, correlationId);
 
+            _commandResults.Add(correlationId, task);
+
             _channel.BasicPublish(
-                exchange: "",
-                routingKey: subject,
+                exchange: string.Empty,
+                routingKey: command.Target,
                 basicProperties: properties,
                 body: body);
-
-            _commandResults.Add(correlationId, task);
 
             return task.Task.ContinueWith(t => (TCommandResult)t.Result);
 
@@ -228,14 +225,55 @@ namespace RabbitMQPlayground.Routing
              where TCommand : class, ICommand
              where TCommandResult : ICommandResult
         {
-            throw new NotImplementedException();
+            var target = subscription.Target;
+
+            if (_commandSubscriberDescriptors.Any(subscriber => subscriber.SubscriptionId == target)) throw new InvalidOperationException($"Bus already have an handler for {subscription.SubscriptionId}");
+
+            _channel.QueueDeclare(queue: target, durable: false, exclusive: false, autoDelete: false, arguments: null);
+
+            var consumer = new EventingBasicConsumer(_channel);
+
+            _channel.BasicConsume(queue: target,
+                                 autoAck: true,
+                                 consumer: consumer);
+
+            var subscriberDescriptor = new CommandSubscriberDescriptor(consumer, target, subscription);
+
+            consumer.Received += (model, arg) =>
+            {
+                var properties = arg.BasicProperties;
+                var body = arg.Body;
+                var type = Type.GetType(arg.BasicProperties.ContentType);
+                var message = (ICommand)_eventSerializer.Serializer.Deserialize(body, type);
+
+                var descriptor = _commandSubscriberDescriptors.FirstOrDefault(subscriber => subscriber.SubscriptionId == message.Target);
+                var commandResult = descriptor.Subscription.OnCommand(message);
+
+                var replyProperties = _channel.CreateBasicProperties();
+                replyProperties.CorrelationId = properties.CorrelationId;
+                replyProperties.ContentType = typeof(TCommandResult).ToString();
+
+                var replyMessage = _eventSerializer.Serializer.Serialize(commandResult);
+
+                _channel.BasicPublish(exchange: string.Empty, routingKey: properties.ReplyTo, basicProperties: replyProperties, body: replyMessage);
+                _channel.BasicAck(deliveryTag: arg.DeliveryTag, multiple: false);
+
+            };
+
+            _commandSubscriberDescriptors.Add(subscriberDescriptor);
         }
 
         public void UnHandle<TCommand, TCommandResult>(ICommandSubscription<TCommand, TCommandResult> subscription)
              where TCommand : class, ICommand
              where TCommandResult : ICommandResult
         {
-            throw new NotImplementedException();
+            var key = subscription.Target;
+
+            var subscriberDescriptor = _commandSubscriberDescriptors.FirstOrDefault(s => s.SubscriptionId == key);
+
+            if (null == subscriberDescriptor) return;
+
+            _commandSubscriberDescriptors.Remove(subscriberDescriptor);
         }
     }
 }

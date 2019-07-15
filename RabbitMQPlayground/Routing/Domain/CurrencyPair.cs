@@ -9,10 +9,10 @@ namespace RabbitMQPlayground.Routing
         public CurrencyPair(string id)
         {
             Id = id;
-            AppliedEvents = new List<IEvent>();
+            AppliedEvents = new List<IAggregateEvent>();
         }
 
-        public List<IEvent> AppliedEvents { get; }
+        public List<IAggregateEvent> AppliedEvents { get; }
 
         public string Id { get; }
         public double Ask { get; set; }
