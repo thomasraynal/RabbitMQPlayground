@@ -1,4 +1,6 @@
-﻿using RabbitMQPlayground.Routing.Event;
+﻿using Microsoft.Extensions.Logging;
+using RabbitMQ.Client;
+using RabbitMQPlayground.Routing.Event;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,11 +15,11 @@ namespace RabbitMQPlayground.Routing.Domain
         private readonly IBus _bus;
         private readonly string _fxExchange;
 
-        public Trader(string fxExchange, string topic, IEventSerializer eventSerializer)
+        public Trader(string fxExchange, string topic, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
         {
             CurrencyPairs = new List<CurrencyPair>();
 
-            _bus = new Bus("localhost", eventSerializer);
+            _bus = new Bus(configuration, connection, logger, eventSerializer);
 
             _fxExchange = fxExchange;
 

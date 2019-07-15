@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using RabbitMQ.Client;
 using RabbitMQPlayground.Routing.Event;
 
 namespace RabbitMQPlayground.Routing.Domain
@@ -14,9 +16,9 @@ namespace RabbitMQPlayground.Routing.Domain
 
         public List<CurrencyPair> CurrencyPairs { get; }
 
-        public Market(string name, string fxExchange, IEventSerializer eventSerializer)
+        public Market(string name, string fxExchange, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
         {
-            _bus = new Bus("localhost", eventSerializer);
+            _bus = new Bus(configuration, connection, logger, eventSerializer);
 
             _name = name;
 

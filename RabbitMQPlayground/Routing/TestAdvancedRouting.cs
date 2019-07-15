@@ -1,4 +1,5 @@
 ﻿using NUnit.Framework;
+using RabbitMQ.Client;
 using RabbitMQPlayground.Routing.Domain;
 using System;
 using System.Collections.Generic;
@@ -53,8 +54,6 @@ namespace RabbitMQPlayground.Routing
 
             var body = lambda.Body;
 
-
-
             var func = lambda.Compile();
 
             Assert.IsTrue(func(ev));
@@ -72,20 +71,47 @@ namespace RabbitMQPlayground.Routing
             var fxEventExchange = "fx";
             var marketName = "fxconnect";
 
-            var trader = new Trader(fxEventExchange, "#", eventSerializer);
-            var market = new Market(marketName, fxEventExchange, eventSerializer);
+            var logger = new LoggerForTests();
 
-            var command = new ChangePriceCommand("EUR/USD", marketName)
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var traderConnection = factory.CreateConnection())
+            using (var marketConnection = factory.CreateConnection())
             {
-                Ask = 1.25,
-                Bid = 1.15,
-                Counterparty = "SGCIB"
-            };
 
-            var commmandResult = await trader.Send<ChangePriceCommandResult>(command, TimeSpan.Zero);
+                var trader = new Trader(fxEventExchange, "#", busConfiguration, traderConnection, logger, eventSerializer);
+                var market = new Market(marketName, fxEventExchange, busConfiguration, traderConnection, logger, eventSerializer);
 
-            Assert.IsNotNull(commmandResult);
-            Assert.AreEqual(marketName, commmandResult.Market);
+                var command = new ChangePriceCommand("EUR/USD", marketName)
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
+
+                var commmandResult = await trader.Send<ChangePriceCommandResult>(command, TimeSpan.Zero);
+
+                Assert.IsNotNull(commmandResult);
+                Assert.AreEqual(marketName, commmandResult.Market);
+
+                await Task.Delay(200);
+
+                Assert.AreEqual(1, trader.CurrencyPairs.Count);
+
+                var ccyPair = trader.CurrencyPairs.First();
+
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                var appliedEvent = ccyPair.AppliedEvents.First() as PriceChangedEvent;
+
+                Assert.AreEqual(command.AggregateId, ccyPair.Id);
+                Assert.AreEqual(command.Ask, ccyPair.Ask);
+                Assert.AreEqual(command.Bid, ccyPair.Bid);
+                Assert.AreEqual(command.Counterparty, appliedEvent.Counterparty);
+
+            }
 
         }
 
@@ -97,31 +123,42 @@ namespace RabbitMQPlayground.Routing
 
             var fxEventExchange = "fx";
 
-            var trader = new Trader(fxEventExchange, "#", eventSerializer);
+            var logger = new LoggerForTests();
 
-            var emittedEvent = new PriceChangedEvent("EUR/USD")
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var traderConnection = factory.CreateConnection())
+            using (var marketConnection = factory.CreateConnection())
             {
-                Ask = 1.25,
-                Bid = 1.15,
-                Counterparty = "SGCIB"
-            };
 
-            trader.Emit(emittedEvent);
+                var trader = new Trader(fxEventExchange, "#", busConfiguration, traderConnection, logger, eventSerializer);
 
-            await Task.Delay(200);
+                var emittedEvent = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
 
-            Assert.AreEqual(1, trader.CurrencyPairs.Count);
+                trader.Emit(emittedEvent);
 
-            var ccyPair = trader.CurrencyPairs.First();
+                await Task.Delay(200);
 
-            Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+                Assert.AreEqual(1, trader.CurrencyPairs.Count);
 
-            var appliedEvent = ccyPair.AppliedEvents.First() as PriceChangedEvent;
+                var ccyPair = trader.CurrencyPairs.First();
 
-            Assert.AreEqual(emittedEvent.AggregateId, ccyPair.Id);
-            Assert.AreEqual(emittedEvent.Ask, ccyPair.Ask);
-            Assert.AreEqual(emittedEvent.Bid, ccyPair.Bid);
-            Assert.AreEqual(emittedEvent.Counterparty, appliedEvent.Counterparty);
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                var appliedEvent = ccyPair.AppliedEvents.First() as PriceChangedEvent;
+
+                Assert.AreEqual(emittedEvent.AggregateId, ccyPair.Id);
+                Assert.AreEqual(emittedEvent.Ask, ccyPair.Ask);
+                Assert.AreEqual(emittedEvent.Bid, ccyPair.Bid);
+                Assert.AreEqual(emittedEvent.Counterparty, appliedEvent.Counterparty);
+            }
 
 
         }
