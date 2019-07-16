@@ -1,6 +1,8 @@
 ﻿using NUnit.Framework;
 using RabbitMQ.Client;
 using RabbitMQPlayground.Routing.Domain;
+using RabbitMQPlayground.Routing.Event;
+using RabbitMQPlayground.Routing.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,56 +16,59 @@ namespace RabbitMQPlayground.Routing
     [TestFixture]
     public class TestAdvancedRouting
     {
+        class TestEvent : EventBase
+        {
+            public TestEvent(string aggregateId) : base(aggregateId)
+            {
+            }
+
+
+            public string Broker { get; set; }
+
+            [RoutingPosition(1)]
+            public string Market { get; set; }
+
+            [RoutingPosition(2)]
+            public string Counterparty { get; set; }
+
+            [RoutingPosition(3)]
+            public string Exchange { get; set; }
+
+
+        }
+
         [Test]
-        public void ExpressionSerialization()
+        public void ShouldNotSerializeAnEventAsRabbitSubject()
         {
 
+        }
 
+        [Test]
+        public void ShouldSerializeAnEventAsRabbitSubject()
+        {
 
-            var ev = new PriceChangedEvent("EUR/USD")
-            {
-                Ask = 1.25,
-                Bid = 1.15,
-                Counterparty = "SGCIB"
-            };
+            Expression<Func<TestEvent, bool>> validExpression = (ev) => (ev.AggregateId == "MySmallBusiness" &&  (ev.Market == "Euronext" && ev.Counterparty == "SGCIB") && ev.Exchange == "SmallCap");
 
-            var ev2 = new PriceChangedEvent("EUR/USD")
-            {
-                Ask = 1.25,
-                Bid = 1.15,
-                Counterparty = "BNP"
-            };
+            var visitor = new RabbitMQSubjectExpressionVisitor(typeof(TestEvent));
 
+            visitor.Visit(validExpression);
 
+            var subject = visitor.Resolve();
 
-            var match1 = Expression.Constant("SGCIB");
-            var match2 = Expression.Constant("BNP");
-            var arg = Expression.Parameter(typeof(PriceChangedEvent), "s");
-            var cpty = Expression.Property(arg, "Counterparty");
+            Assert.AreEqual("MySmallBusiness.Euronext.SGCIB.SmallCap", subject);
 
-            var exp1 = Expression.Equal(cpty, match1);
-            var exp2 = Expression.NotEqual(cpty, match2);
+            validExpression = (ev) => true;
 
-            var andAlso1 = Expression.AndAlso(exp1, exp2);
+            visitor.Visit(validExpression);
 
-            var andAlso2 = Expression.AndAlso(andAlso1, exp2);
+            subject = visitor.Resolve();
 
-            var lambda = Expression.Lambda<Func<PriceChangedEvent, bool>>(andAlso2, arg);
-
-            var items = new List<Expression>();
-
-            var body = lambda.Body;
-
-            var func = lambda.Compile();
-
-            Assert.IsTrue(func(ev));
-            Assert.IsFalse(func(ev2));
-
+            Assert.AreEqual("#", subject);
         }
 
 
         [Test]
-        public async Task TestSendCommand()
+        public async Task ShouldSendCommand()
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
@@ -116,7 +121,7 @@ namespace RabbitMQPlayground.Routing
         }
 
         [Test]
-        public async Task TestConsumeEvent()
+        public async Task ShouldConsumeEvent()
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
