@@ -49,9 +49,9 @@ namespace RabbitMQPlayground.Routing.Domain
             _bus.Emit(@event, _fxExchange);
         }
 
-        public async Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult
+        public async Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult
         {
-            return await _bus.Send<TCommandResult>(command, timeout);
+            return await _bus.Send<TCommandResult>(command);
         }
     }
 }

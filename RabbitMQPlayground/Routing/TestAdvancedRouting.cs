@@ -149,7 +149,7 @@ namespace RabbitMQPlayground.Routing
                     Counterparty = "SGCIB"
                 };
 
-                var commmandResult = await trader.Send<ChangePriceCommandResult>(command, TimeSpan.Zero);
+                var commmandResult = await trader.Send<ChangePriceCommandResult>(command);
 
                 Assert.IsNotNull(commmandResult);
                 Assert.AreEqual(marketName, commmandResult.Market);
@@ -230,6 +230,45 @@ namespace RabbitMQPlayground.Routing
                 await Task.Delay(50);
 
                 Assert.AreEqual(2, ccyPair.AppliedEvents.Count);
+            }
+
+        }
+
+        [Test]
+        public async Task ShouldSubscribeAndUnsubscribe()
+        {
+
+        }
+
+        [Test]
+        public async Task ShouldFailedToConsumeEvent()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+
+            var fxEventExchange = "fx";
+
+            var logger = new LoggerForTests();
+
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
+            using (var traderConnection = factory.CreateConnection())
+            {
+
+                var trader = new Trader(fxEventExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
+                var body = Encoding.UTF8.GetBytes("this will explode server side");
+
+                channel.BasicPublish(exchange: fxEventExchange,
+                                     routingKey: "#",
+                                     basicProperties: null,
+                                     body: body);
+
+                await Task.Delay(2000);
+
             }
 
         }

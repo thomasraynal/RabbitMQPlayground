@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.Routing
@@ -69,6 +70,7 @@ namespace RabbitMQPlayground.Routing
             _commandSubscriberDescriptors = new List<CommandSubscriberDescriptor>();
 
             _channel = connection.CreateModel();
+
             _commandResults = new Dictionary<string, TaskCompletionSource<ICommandResult>>();
 
         }
@@ -82,18 +84,21 @@ namespace RabbitMQPlayground.Routing
 
         public void Emit(IEvent @event, string exchange)
         {
+
             var body = _eventSerializer.Serializer.Serialize(@event);
             var subject = _eventSerializer.GetSubject(@event);
 
             var properties = _channel.CreateBasicProperties();
 
             properties.Type = @event.GetType().ToString();
-           
+            properties.ContentType = _eventSerializer.Serializer.ContentMIMEType;
+            properties.ContentEncoding = _eventSerializer.Serializer.ContentEncoding;
 
             _channel.BasicPublish(exchange: exchange,
                                  routingKey: subject,
                                  basicProperties: properties,
                                  body: body);
+
         }
 
         private EventSubscriberDescriptor GetOrCreateEventSubscriberDescriptor(IEventSubscription subscription)
@@ -116,20 +121,43 @@ namespace RabbitMQPlayground.Routing
                                    routingKey: subscription.RoutingKey);
 
                 _channel.BasicConsume(queue: queueName,
-                                     autoAck: true,
+                                     autoAck: false,
                                      consumer: consumer);
 
                 subscriberDescriptor = new EventSubscriberDescriptor(subscription.Exchange, subscription.RoutingKey, consumer, queueName);
 
                 consumer.Received += (model, arg) =>
                 {
-                    var body = arg.Body;
-                    var type = Type.GetType(arg.BasicProperties.Type);
-                    var message = (IEvent)_eventSerializer.Serializer.Deserialize(body, type);
-
-                    foreach (var subscriber in subscriberDescriptor.Subscriptions)
+                    try
                     {
-                        subscriber.OnEvent(message);
+
+                        var body = arg.Body;
+                        var type = Type.GetType(arg.BasicProperties.Type);
+                        var message = (IEvent)_eventSerializer.Serializer.Deserialize(body, type);
+
+                        //if the message is correct, we ack it. Error during the subscriber handling process are their responsability.
+                        _channel.BasicAck(deliveryTag: arg.DeliveryTag, multiple: false);
+
+                        //we may have faulty subscriber, but if the message is viable, all subscribers must process it
+                        foreach (var subscriber in subscriberDescriptor.Subscriptions)
+                        {
+                            try
+                            {
+                                subscriber.OnEvent(message);
+                            }
+                            catch (Exception ex)
+                            {
+                                //todo: insure logs allow to track faulty subscriber
+                                _logger.LogError($"Error while handling event {arg.BasicProperties.Type} by subscriber {subscriber.SubscriptionId} {subscriber.RoutingKey}", ex);
+                            }
+                        }
+
+                    }
+                    catch (Exception ex)
+                    {
+                        //todo: create a dead letter workflow
+                        _channel.BasicReject(deliveryTag: arg.DeliveryTag, requeue: false);
+                        _logger.LogError($"Error while handling event {arg.BasicProperties.Type}", ex);
                     }
 
                 };
@@ -194,7 +222,7 @@ namespace RabbitMQPlayground.Routing
                autoAck: true);
         }
 
-        public Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult
+        public Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult
         {
             var task = new TaskCompletionSource<ICommandResult>();
 
@@ -206,6 +234,8 @@ namespace RabbitMQPlayground.Routing
 
             var body = _eventSerializer.Serializer.Serialize(command);
 
+            properties.ContentType = _eventSerializer.Serializer.ContentMIMEType;
+            properties.ContentEncoding = _eventSerializer.Serializer.ContentEncoding;
             properties.Type = command.GetType().ToString();
             properties.CorrelationId = correlationId;
             properties.ReplyTo = replyQueueName;
@@ -221,7 +251,10 @@ namespace RabbitMQPlayground.Routing
                 mandatory : true,
                 body: body);
 
-            return task.Task.ContinueWith(t => (TCommandResult)t.Result);
+            var cancel = new CancellationTokenSource(_configuration.CommandTimeout);
+            cancel.Token.Register(() => task.TrySetCanceled(), false);
+
+            return task.Task.ContinueWith(t => (TCommandResult)t.Result, cancel.Token);
 
         }
 
@@ -259,16 +292,18 @@ namespace RabbitMQPlayground.Routing
                     var replyProperties = _channel.CreateBasicProperties();
                     replyProperties.CorrelationId = properties.CorrelationId;
                     replyProperties.Type = typeof(TCommandResult).ToString();
+                    properties.ContentType = _eventSerializer.Serializer.ContentMIMEType;
+                    properties.ContentEncoding = _eventSerializer.Serializer.ContentEncoding;
 
                     var replyMessage = _eventSerializer.Serializer.Serialize(commandResult);
 
-                    _channel.BasicPublish(exchange: string.Empty, routingKey: properties.ReplyTo, mandatory: true, basicProperties: replyProperties, body: replyMessage);
                     _channel.BasicAck(deliveryTag: arg.DeliveryTag, multiple: false);
-
+                    _channel.BasicPublish(exchange: string.Empty, routingKey: properties.ReplyTo, mandatory: true, basicProperties: replyProperties, body: replyMessage);
+                   
                 }
                 catch (Exception ex)
                 {
-                    _channel.BasicNack(deliveryTag: arg.DeliveryTag, multiple: false, requeue: false);
+                    _channel.BasicReject(deliveryTag: arg.DeliveryTag, requeue: false);
 
                     _logger.LogError($"Error while handling command {arg.BasicProperties.Type}", ex);
 

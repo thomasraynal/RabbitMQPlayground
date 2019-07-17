@@ -9,6 +9,6 @@ namespace RabbitMQPlayground.Routing
     public interface IPublisher
     {
         void Emit(IEvent @event, string exchange);
-        Task<TCommandResult> Send<TCommandResult>(ICommand command, TimeSpan timeout) where TCommandResult : ICommandResult;
+        Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult;
     }
 }

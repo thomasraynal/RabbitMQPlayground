@@ -10,8 +10,10 @@ namespace RabbitMQPlayground.Routing
         public BusConfiguration(bool isDurable)
         {
             IsDurable = isDurable;
+            CommandTimeout = TimeSpan.FromSeconds(1);
         }
 
         public bool IsDurable { get; }
+        public TimeSpan CommandTimeout { get; }
     }
 }

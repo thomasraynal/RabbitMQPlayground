@@ -7,6 +7,10 @@ namespace RabbitMQPlayground.Routing
 {
     public class JsonNetSerializer : ISerializer
     {
+        public string ContentMIMEType => "application/json";
+
+        public string ContentEncoding => string.Empty;
+
         public T Deserialize<T>(byte[] bytes)
         {
             return JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(bytes));
