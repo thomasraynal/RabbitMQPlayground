@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public class EventSubscription<TEvent> : EventSubscriptionBase, IEventSubscription<TEvent> where TEvent : class, IEvent
+    public class EventSubscription<TEvent> : EventSubscriptionBase<TEvent>, IEventSubscription<TEvent> where TEvent : class, IEvent
     {
-        public EventSubscription(string exchange, string routingKey, Action<TEvent> onEvent) : base(exchange, routingKey)
+        public EventSubscription(string exchange, Expression<Func<TEvent, bool>> routingStrategy, Action<TEvent> onEvent) : base(exchange, routingStrategy)
         {
 
             OnTypedEvent = onEvent;
@@ -16,8 +17,6 @@ namespace RabbitMQPlayground.Routing
                 OnTypedEvent(ev as TEvent);
             };
         }
-
-        public Action<TEvent> OnTypedEvent { get; }
 
         public override bool Equals(object obj)
         {

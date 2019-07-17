@@ -4,6 +4,7 @@ using RabbitMQPlayground.Routing.Event;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.Routing.Domain
@@ -15,7 +16,7 @@ namespace RabbitMQPlayground.Routing.Domain
         private readonly IBus _bus;
         private readonly string _fxExchange;
 
-        public Trader(string fxExchange, string topic, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
+        public Trader(string fxExchange, Expression<Func<PriceChangedEvent, bool>> routingStrategy, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
         {
             CurrencyPairs = new List<CurrencyPair>();
 
@@ -23,7 +24,7 @@ namespace RabbitMQPlayground.Routing.Domain
 
             _fxExchange = fxExchange;
 
-            _bus.Subscribe(new EventSubscription<PriceChangedEvent>(fxExchange, topic, (@event) =>
+            _bus.Subscribe(new EventSubscription<PriceChangedEvent>(fxExchange, routingStrategy, (@event) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == @event.AggregateId);
 

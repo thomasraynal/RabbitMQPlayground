@@ -22,6 +22,7 @@ namespace RabbitMQPlayground.Routing
             {
             }
 
+            public object Invalid { get; set; }
 
             public string Broker { get; set; }
 
@@ -40,7 +41,42 @@ namespace RabbitMQPlayground.Routing
         [Test]
         public void ShouldNotSerializeAnEventAsRabbitSubject()
         {
+            //non routable property
+            Expression<Func<TestEvent, bool>> validExpression = (ev) => (ev.AggregateId == "MySmallBusiness" && (ev.Broker == "Newedge" && ev.Counterparty == "SGCIB") && ev.Exchange == "SmallCap");
 
+            var visitor = new RabbitMQSubjectExpressionVisitor(typeof(TestEvent));
+
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                visitor.Visit(validExpression);
+            });
+
+
+            //type not allowed
+            validExpression = (ev) => ev.Invalid ==  null;
+
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                visitor.Visit(validExpression);
+            });
+
+
+            //member multiple reference
+            validExpression = (ev) => ev.AggregateId == "EUR/USD"  && ev.AggregateId == "EUR/GBP";
+
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                visitor.Visit(validExpression);
+            });
+
+            //too complex lambda 
+            validExpression = (ev) => ev.AggregateId == "EUR/USD" && ev.Market != "Euronext";
+
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                visitor.Visit(validExpression);
+            });
+ 
         }
 
         [Test]
@@ -64,6 +100,23 @@ namespace RabbitMQPlayground.Routing
             subject = visitor.Resolve();
 
             Assert.AreEqual("#", subject);
+
+            validExpression = (ev) => ev.AggregateId == "MySmallBusiness";
+
+            visitor.Visit(validExpression);
+
+            subject = visitor.Resolve();
+
+            Assert.AreEqual("MySmallBusiness.*", subject);
+
+            validExpression = (ev) => ev.Market == "Euronext";
+
+            visitor.Visit(validExpression);
+
+            subject = visitor.Resolve();
+
+            Assert.AreEqual("*.Euronext.*", subject);
+
         }
 
 
@@ -86,7 +139,7 @@ namespace RabbitMQPlayground.Routing
             using (var marketConnection = factory.CreateConnection())
             {
 
-                var trader = new Trader(fxEventExchange, "#", busConfiguration, traderConnection, logger, eventSerializer);
+                var trader = new Trader(fxEventExchange, (ev)=> true, busConfiguration, traderConnection, logger, eventSerializer);
                 var market = new Market(marketName, fxEventExchange, busConfiguration, traderConnection, logger, eventSerializer);
 
                 var command = new ChangePriceCommand("EUR/USD", marketName)
@@ -121,6 +174,67 @@ namespace RabbitMQPlayground.Routing
         }
 
         [Test]
+        public async Task ShouldFilterByTopic()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+            var fxEventExchange = "fx";
+
+            var logger = new LoggerForTests();
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var traderConnection = factory.CreateConnection())
+            {
+                var trader = new Trader(fxEventExchange, (ev) => ev.Counterparty == "SGCIB", busConfiguration, traderConnection, logger, eventSerializer);
+
+                var validEvent1 = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
+
+                trader.Emit(validEvent1);
+
+                await Task.Delay(50);
+
+                Assert.AreEqual(1, trader.CurrencyPairs.Count);
+
+                var ccyPair = trader.CurrencyPairs.First();
+
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                var invalidEvent = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "BNP"
+                };
+
+                trader.Emit(invalidEvent);
+
+                await Task.Delay(50);
+
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                var validEvent2 = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
+
+                trader.Emit(validEvent2);
+
+                await Task.Delay(50);
+
+                Assert.AreEqual(2, ccyPair.AppliedEvents.Count);
+            }
+
+        }
+
+        [Test]
         public async Task ShouldConsumeEvent()
         {
             var serializer = new JsonNetSerializer();
@@ -135,10 +249,9 @@ namespace RabbitMQPlayground.Routing
             var busConfiguration = new BusConfiguration(false);
 
             using (var traderConnection = factory.CreateConnection())
-            using (var marketConnection = factory.CreateConnection())
             {
 
-                var trader = new Trader(fxEventExchange, "#", busConfiguration, traderConnection, logger, eventSerializer);
+                var trader = new Trader(fxEventExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
 
                 var emittedEvent = new PriceChangedEvent("EUR/USD")
                 {
@@ -149,7 +262,7 @@ namespace RabbitMQPlayground.Routing
 
                 trader.Emit(emittedEvent);
 
-                await Task.Delay(200);
+                await Task.Delay(50);
 
                 Assert.AreEqual(1, trader.CurrencyPairs.Count);
 

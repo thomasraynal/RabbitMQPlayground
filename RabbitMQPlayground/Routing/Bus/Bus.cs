@@ -50,7 +50,6 @@ namespace RabbitMQPlayground.Routing
             public string QueueName { get; }
         }
 
-        private readonly ConnectionFactory _factory;
         private readonly IModel _channel;
         private readonly List<EventSubscriberDescriptor> _eventSubscriberDescriptors;
         private readonly List<CommandSubscriberDescriptor> _commandSubscriberDescriptors;
@@ -183,6 +182,7 @@ namespace RabbitMQPlayground.Routing
 
                     _commandResults.Remove(correlationId);
 
+                    //todo: keep only one queue to handle command reply
                     _channel.QueueDeleteNoWait(queueName);
 
                 }
@@ -200,6 +200,8 @@ namespace RabbitMQPlayground.Routing
 
             var properties = _channel.CreateBasicProperties();
             var correlationId = Guid.NewGuid().ToString();
+
+            //todo: keep only one queue to handle command reply, created on bus creation
             var replyQueueName = _channel.QueueDeclare().QueueName;
 
             var body = _eventSerializer.Serializer.Serialize(command);
