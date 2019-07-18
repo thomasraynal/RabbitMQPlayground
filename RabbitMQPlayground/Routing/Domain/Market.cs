@@ -9,7 +9,7 @@ using RabbitMQPlayground.Routing.Event;
 
 namespace RabbitMQPlayground.Routing.Domain
 {
-    public class Market : IPublisher
+    public class Market : IPublisher, IDisposable
     {
         private readonly IBus _bus;
         private string _name;
@@ -63,6 +63,11 @@ namespace RabbitMQPlayground.Routing.Domain
         public async Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult
         {
             return await _bus.Send<TCommandResult>(command);
+        }
+
+        public void Dispose()
+        {
+            _bus.Dispose();
         }
     }
 }

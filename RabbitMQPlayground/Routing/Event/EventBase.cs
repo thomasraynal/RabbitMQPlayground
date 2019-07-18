@@ -24,7 +24,7 @@ namespace RabbitMQPlayground.Routing.Event
         {
             get
             {
-                return _eventSerializer.GetSubject(this);
+                return _eventSerializer.GetRoutingKey(this);
             }
         }
 

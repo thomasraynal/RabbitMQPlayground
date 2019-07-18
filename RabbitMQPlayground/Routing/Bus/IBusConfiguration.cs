@@ -6,7 +6,7 @@ namespace RabbitMQPlayground.Routing
 {
     public interface IBusConfiguration
     {
-        bool IsDurable { get; }
-        TimeSpan CommandTimeout { get; }
+        bool IsDurable { get; set; }
+        TimeSpan CommandTimeout { get; set; }
     }
 }

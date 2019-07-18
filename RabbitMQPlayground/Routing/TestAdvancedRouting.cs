@@ -1,5 +1,6 @@
 ﻿using NUnit.Framework;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 using RabbitMQPlayground.Routing.Domain;
 using RabbitMQPlayground.Routing.Event;
 using RabbitMQPlayground.Routing.Shared;
@@ -16,6 +17,10 @@ namespace RabbitMQPlayground.Routing
     [TestFixture]
     public class TestAdvancedRouting
     {
+        private readonly string _fxEventsExchange = "fx";
+        private readonly string _fxRejectedEventsExchange = "fx-rejected";
+        private readonly string _marketQueue = "fxconnect";
+
         class TestEvent : EventBase
         {
             public TestEvent(string aggregateId) : base(aggregateId)
@@ -36,6 +41,21 @@ namespace RabbitMQPlayground.Routing
             public string Exchange { get; set; }
 
 
+        }
+
+        [OneTimeTearDown]
+        public void OneTimeTearDown()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
+            {
+                channel.ExchangeDelete(_fxEventsExchange);
+                channel.ExchangeDelete(_fxRejectedEventsExchange);
+                channel.ExchangeDelete(Bus.CommandsExchange);
+                channel.ExchangeDelete(Bus.RejectedCommandsExchange);
+            }
         }
 
         [Test]
@@ -126,9 +146,6 @@ namespace RabbitMQPlayground.Routing
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
 
-            var fxEventExchange = "fx";
-            var marketName = "fxconnect";
-
             var logger = new LoggerForTests();
 
             var factory = new ConnectionFactory() { HostName = "localhost" };
@@ -139,10 +156,10 @@ namespace RabbitMQPlayground.Routing
             using (var marketConnection = factory.CreateConnection())
             {
 
-                var trader = new Trader(fxEventExchange, (ev)=> true, busConfiguration, traderConnection, logger, eventSerializer);
-                var market = new Market(marketName, fxEventExchange, busConfiguration, traderConnection, logger, eventSerializer);
+                var trader = new Trader(_fxEventsExchange, (ev)=> true, busConfiguration, traderConnection, logger, eventSerializer);
+                var market = new Market(_marketQueue, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
 
-                var command = new ChangePriceCommand("EUR/USD", marketName)
+                var command = new ChangePriceCommand("EUR/USD", _marketQueue)
                 {
                     Ask = 1.25,
                     Bid = 1.15,
@@ -152,7 +169,7 @@ namespace RabbitMQPlayground.Routing
                 var commmandResult = await trader.Send<ChangePriceCommandResult>(command);
 
                 Assert.IsNotNull(commmandResult);
-                Assert.AreEqual(marketName, commmandResult.Market);
+                Assert.AreEqual(_marketQueue, commmandResult.Market);
 
                 await Task.Delay(200);
 
@@ -178,15 +195,14 @@ namespace RabbitMQPlayground.Routing
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
-            var fxEventExchange = "fx";
-
+      
             var logger = new LoggerForTests();
             var factory = new ConnectionFactory() { HostName = "localhost" };
             var busConfiguration = new BusConfiguration(false);
 
             using (var traderConnection = factory.CreateConnection())
             {
-                var trader = new Trader(fxEventExchange, (ev) => ev.Counterparty == "SGCIB", busConfiguration, traderConnection, logger, eventSerializer);
+                var trader = new Trader(_fxEventsExchange, (ev) => ev.Counterparty == "SGCIB", busConfiguration, traderConnection, logger, eventSerializer);
 
                 var validEvent1 = new PriceChangedEvent("EUR/USD")
                 {
@@ -238,6 +254,102 @@ namespace RabbitMQPlayground.Routing
         public async Task ShouldSubscribeAndUnsubscribe()
         {
 
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+            var logger = new LoggerForTests();
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var connection = factory.CreateConnection())
+            {
+
+                var bus = new Bus(busConfiguration, connection, logger, eventSerializer);
+
+                var sgcibHasBeenCalled = false;
+                var bnpHasBeenCalled = false;
+
+                void reset()
+                {
+                     sgcibHasBeenCalled = false;
+                     bnpHasBeenCalled = false;
+                };
+
+                var sgcibSubscription = new EventSubscription<PriceChangedEvent>(_fxEventsExchange, ev => ev.Counterparty == "SGCIB", (@event) =>
+                {
+                    sgcibHasBeenCalled = true;
+                });
+
+                var bnpSubscription = new EventSubscription<PriceChangedEvent>(_fxEventsExchange, ev => ev.Counterparty == "BNP", (@event) =>
+                {
+                    bnpHasBeenCalled = true;
+                });
+
+                var sgcibEvent = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
+
+                var bnpEvent = new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "BNP"
+                };
+
+                bus.Emit(sgcibEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsFalse(sgcibHasBeenCalled);
+                Assert.IsFalse(bnpHasBeenCalled);
+
+                bus.Subscribe(sgcibSubscription);
+
+                bus.Emit(sgcibEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsTrue(sgcibHasBeenCalled);
+                Assert.IsFalse(bnpHasBeenCalled);
+
+                reset();
+
+                bus.Subscribe(bnpSubscription);
+
+                bus.Emit(bnpEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsFalse(sgcibHasBeenCalled);
+                Assert.IsTrue(bnpHasBeenCalled);
+
+                reset();
+
+                bus.Unsubscribe(bnpSubscription);
+
+                bus.Emit(bnpEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsFalse(sgcibHasBeenCalled);
+                Assert.IsFalse(bnpHasBeenCalled);
+
+                bus.Emit(sgcibEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsTrue(sgcibHasBeenCalled);
+                Assert.IsFalse(bnpHasBeenCalled);
+
+                reset();
+
+                bus.Unsubscribe(sgcibSubscription);
+
+                bus.Emit(sgcibEvent, _fxEventsExchange);
+                await Task.Delay(50);
+
+                Assert.IsFalse(sgcibHasBeenCalled);
+                Assert.IsFalse(bnpHasBeenCalled);
+
+            }
+
         }
 
         [Test]
@@ -245,8 +357,6 @@ namespace RabbitMQPlayground.Routing
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
-
-            var fxEventExchange = "fx";
 
             var logger = new LoggerForTests();
 
@@ -258,19 +368,100 @@ namespace RabbitMQPlayground.Routing
             using (var channel = connection.CreateModel())
             using (var traderConnection = factory.CreateConnection())
             {
+                var trader = new Trader(_fxEventsExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
 
-                var trader = new Trader(fxEventExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
-                var body = Encoding.UTF8.GetBytes("this will explode server side");
+                var deadLettersQueue = channel.QueueDeclare(exclusive: true, autoDelete: true).QueueName;
+                var consumer = new EventingBasicConsumer(channel);
 
-                channel.BasicPublish(exchange: fxEventExchange,
+                channel.QueueBind(queue: deadLettersQueue,
+                     exchange: _fxRejectedEventsExchange,
+                     routingKey: "#");
+
+                channel.BasicConsume(queue: deadLettersQueue,
+                                     autoAck: false,
+                                     consumer: consumer);
+
+                var hasReceivedDeadLetter = false;
+
+                consumer.Received += (model, arg) =>
+                {
+                    hasReceivedDeadLetter = true;
+                };
+
+              var body = Encoding.UTF8.GetBytes("this will explode server side");
+
+                channel.BasicPublish(exchange: _fxEventsExchange,
                                      routingKey: "#",
                                      basicProperties: null,
                                      body: body);
 
-                await Task.Delay(2000);
+                await Task.Delay(500);
+
+                Assert.IsTrue(hasReceivedDeadLetter);
 
             }
 
+        }
+
+        [Test]
+        public async Task ShouldFailedToHandleCommand()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+
+            var logger = new LoggerForTests();
+
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false)
+            {
+                CommandTimeout = TimeSpan.FromMilliseconds(500)
+            };
+
+            using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
+            using (var marketConnection = factory.CreateConnection())
+            using (var traderConnection = factory.CreateConnection())
+            {
+                var trader = new Trader(_fxEventsExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
+
+                var deadLettersQueue = channel.QueueDeclare(exclusive: true, autoDelete: true).QueueName;
+                var consumer = new EventingBasicConsumer(channel);
+
+                channel.QueueBind(queue: deadLettersQueue,
+                     exchange: Bus.RejectedCommandsExchange,
+                     routingKey: "#");
+
+                channel.BasicConsume(queue: deadLettersQueue,
+                                     autoAck: false,
+                                     consumer: consumer);
+
+                var hasReceivedDeadLetter = false;
+
+                consumer.Received += (model, arg) =>
+                {
+                    hasReceivedDeadLetter = true;
+                };
+
+                Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                {
+                    await trader.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD", _marketQueue));
+                });
+
+                //create an handler for the command
+                var market = new Market(_marketQueue, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
+
+                var body = Encoding.UTF8.GetBytes("this will explode server side");
+
+                channel.BasicPublish(exchange: Bus.CommandsExchange,
+                                     routingKey: _marketQueue,
+                                     basicProperties: null,
+                                     body: body);
+
+                await Task.Delay(500);
+
+                Assert.IsTrue(hasReceivedDeadLetter);
+            }
         }
 
         [Test]
@@ -278,8 +469,6 @@ namespace RabbitMQPlayground.Routing
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
-
-            var fxEventExchange = "fx";
 
             var logger = new LoggerForTests();
 
@@ -290,7 +479,7 @@ namespace RabbitMQPlayground.Routing
             using (var traderConnection = factory.CreateConnection())
             {
 
-                var trader = new Trader(fxEventExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
+                var trader = new Trader(_fxEventsExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
 
                 var emittedEvent = new PriceChangedEvent("EUR/USD")
                 {
@@ -315,6 +504,8 @@ namespace RabbitMQPlayground.Routing
                 Assert.AreEqual(emittedEvent.Ask, ccyPair.Ask);
                 Assert.AreEqual(emittedEvent.Bid, ccyPair.Bid);
                 Assert.AreEqual(emittedEvent.Counterparty, appliedEvent.Counterparty);
+
+         
             }
 
 

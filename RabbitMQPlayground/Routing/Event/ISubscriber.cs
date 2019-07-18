@@ -6,7 +6,7 @@ namespace RabbitMQPlayground.Routing.Event
 {
     public interface ISubscriber
     {
-        void Subscribe<TEvent>(IEventSubscription<TEvent> subscribe);
-        void Unsubscribe<TEvent>(IEventSubscription<TEvent> subscribe);
+        void Subscribe<TEvent>(IEventSubscription<TEvent> subscribtion);
+        void Unsubscribe<TEvent>(IEventSubscription<TEvent> subscribtion);
     }
 }

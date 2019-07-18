@@ -8,6 +8,5 @@ namespace RabbitMQPlayground.Routing
     public interface IActor : IDisposable
     {
         Guid Id { get; }
-        Task Run();
     }
 }

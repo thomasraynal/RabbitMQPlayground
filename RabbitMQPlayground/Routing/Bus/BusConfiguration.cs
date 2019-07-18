@@ -13,7 +13,7 @@ namespace RabbitMQPlayground.Routing
             CommandTimeout = TimeSpan.FromSeconds(1);
         }
 
-        public bool IsDurable { get; }
-        public TimeSpan CommandTimeout { get; }
+        public bool IsDurable { get; set; }
+        public TimeSpan CommandTimeout { get; set; }
     }
 }

@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.Routing.Domain
 {
-    public class Trader
+    public class Trader : ISubscriber, IDisposable
     {
         public List<CurrencyPair> CurrencyPairs { get; }
 
@@ -52,6 +52,21 @@ namespace RabbitMQPlayground.Routing.Domain
         public async Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult
         {
             return await _bus.Send<TCommandResult>(command);
+        }
+
+        public void Dispose()
+        {
+            _bus.Dispose();
+        }
+
+        public void Subscribe<TEvent>(IEventSubscription<TEvent> subscribtion)
+        {
+            _bus.Subscribe(subscribtion);
+        }
+
+        public void Unsubscribe<TEvent>(IEventSubscription<TEvent> subscribtion)
+        {
+            _bus.Unsubscribe(subscribtion);
         }
     }
 }

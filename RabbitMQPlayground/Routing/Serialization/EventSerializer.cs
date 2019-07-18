@@ -18,7 +18,7 @@ namespace RabbitMQPlayground.Routing
             Serializer = serializer;
         }
 
-        public string GetSubject(IEvent @event)
+        public string GetRoutingKey(IEvent @event)
         {
             var tokens = GetTokens(@event.GetType());
 
