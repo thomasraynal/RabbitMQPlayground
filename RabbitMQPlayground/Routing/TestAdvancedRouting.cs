@@ -19,7 +19,7 @@ namespace RabbitMQPlayground.Routing
     {
         private readonly string _fxEventsExchange = "fx";
         private readonly string _fxRejectedEventsExchange = "fx-rejected";
-        private readonly string _marketQueue = "fxconnect";
+        private readonly string _marketExchange = "fxconnect";
 
         class TestEvent : EventBase
         {
@@ -139,6 +139,78 @@ namespace RabbitMQPlayground.Routing
 
         }
 
+        [Test]
+        public async Task ShouldSendMultipleCommands()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+
+            var logger = new LoggerForTests();
+
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var traderConnection = factory.CreateConnection())
+            using (var marketConnection = factory.CreateConnection())
+            {
+
+                var trader = new Trader(_fxEventsExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
+                var market = new Market(_marketExchange, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
+
+                trader.Subscribe(new EventSubscription<CurrencyPairDesactivated>(_fxEventsExchange, (ev) => true, (ev) =>
+                {
+                    var ccyP = trader.CurrencyPairs.First(ccy => ccy.Id == ev.AggregateId);
+                    ccyP.AppliedEvents.Add(ev);
+                }));
+
+                market.Handle(new CommandSubscription<DesactivateCurrencyPairCommand, DesactivateCurrencyPairCommandResult>(_marketExchange, (cmd) =>
+                 {
+                     market.Emit(new CurrencyPairDesactivated(cmd.AggregateId), _fxEventsExchange);
+
+                     return new DesactivateCurrencyPairCommandResult()
+                     {
+                         Market = market.Name
+                     };
+
+                 }));
+
+                var changePriceCommand = new ChangePriceCommand("EUR/USD", market.Name)
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                };
+
+                var desactivateCcyPairCommand = new DesactivateCurrencyPairCommand("EUR/USD", market.Name)
+                {
+                };
+
+
+                var changePriceCommmandResult = await trader.Send<ChangePriceCommandResult>(changePriceCommand);
+
+                Assert.IsNotNull(changePriceCommmandResult);
+                Assert.AreEqual(market.Name, changePriceCommmandResult.Market);
+
+                await Task.Delay(200);
+
+                Assert.AreEqual(1, trader.CurrencyPairs.Count);
+
+                var ccyPair = trader.CurrencyPairs.First();
+
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                var desactivateCccyPairCommmandResult = await trader.Send<DesactivateCurrencyPairCommandResult>(desactivateCcyPairCommand);
+
+                Assert.IsNotNull(desactivateCccyPairCommmandResult);
+                Assert.AreEqual(market.Name, desactivateCccyPairCommmandResult.Market);
+
+                await Task.Delay(200);
+
+                Assert.AreEqual(2, ccyPair.AppliedEvents.Count);
+
+            }
+        }
 
         [Test]
         public async Task ShouldSendCommand()
@@ -157,9 +229,9 @@ namespace RabbitMQPlayground.Routing
             {
 
                 var trader = new Trader(_fxEventsExchange, (ev)=> true, busConfiguration, traderConnection, logger, eventSerializer);
-                var market = new Market(_marketQueue, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
+                var market = new Market(_marketExchange, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
 
-                var command = new ChangePriceCommand("EUR/USD", _marketQueue)
+                var command = new ChangePriceCommand("EUR/USD", market.Name)
                 {
                     Ask = 1.25,
                     Bid = 1.15,
@@ -169,7 +241,7 @@ namespace RabbitMQPlayground.Routing
                 var commmandResult = await trader.Send<ChangePriceCommandResult>(command);
 
                 Assert.IsNotNull(commmandResult);
-                Assert.AreEqual(_marketQueue, commmandResult.Market);
+                Assert.AreEqual(market.Name, commmandResult.Market);
 
                 await Task.Delay(200);
 
@@ -404,7 +476,7 @@ namespace RabbitMQPlayground.Routing
         }
 
         [Test]
-        public async Task ShouldFailedToHandleCommand()
+        public void ShouldFailedToHandleCommand()
         {
             var serializer = new JsonNetSerializer();
             var eventSerializer = new EventSerializer(serializer);
@@ -445,24 +517,71 @@ namespace RabbitMQPlayground.Routing
 
                 Assert.ThrowsAsync<TaskCanceledException>(async () =>
                 {
-                    await trader.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD", _marketQueue));
+                    await trader.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD", _marketExchange));
                 });
 
                 //create an handler for the command
-                var market = new Market(_marketQueue, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
+                var market = new Market(_marketExchange, _fxEventsExchange, busConfiguration, traderConnection, logger, eventSerializer);
 
-                var body = Encoding.UTF8.GetBytes("this will explode server side");
+                market.Handle(new CommandSubscription<FaultyCommand, CommandResult>(market.Name, (cmd) => new CommandResult()));
 
-                channel.BasicPublish(exchange: Bus.CommandsExchange,
-                                     routingKey: _marketQueue,
-                                     basicProperties: null,
-                                     body: body);
-
-                await Task.Delay(500);
+                Assert.ThrowsAsync<CommandFailureException>(async () =>
+                {
+                    await trader.Send<CommandResult>(new FaultyCommand("EUR/USD", market.Name));
+                });
 
                 Assert.IsTrue(hasReceivedDeadLetter);
+
             }
         }
+
+        [Test]
+        public async Task ShouldConsumeMultipleEvents()
+        {
+            var serializer = new JsonNetSerializer();
+            var eventSerializer = new EventSerializer(serializer);
+
+            var logger = new LoggerForTests();
+
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var busConfiguration = new BusConfiguration(false);
+
+            using (var traderConnection = factory.CreateConnection())
+            {
+
+                var trader = new Trader(_fxEventsExchange, (ev) => true, busConfiguration, traderConnection, logger, eventSerializer);
+
+                trader.Subscribe(new EventSubscription<CurrencyPairDesactivated>(_fxEventsExchange, (ev) => true, (ev) =>
+                {
+                    var ccyP = trader.CurrencyPairs.First(ccy => ccy.Id == ev.AggregateId);
+                    ccyP.AppliedEvents.Add(ev);
+                }));
+
+                trader.Emit(new PriceChangedEvent("EUR/USD")
+                {
+                    Ask = 1.25,
+                    Bid = 1.15,
+                    Counterparty = "SGCIB"
+                });
+
+                await Task.Delay(100);
+
+                Assert.AreEqual(1, trader.CurrencyPairs.Count);
+
+                var ccyPair = trader.CurrencyPairs.First();
+
+                Assert.AreEqual(1, ccyPair.AppliedEvents.Count);
+
+                trader.Emit(new CurrencyPairDesactivated("EUR/USD"));
+
+                await Task.Delay(100);
+
+                Assert.AreEqual(2, ccyPair.AppliedEvents.Count);
+
+            }
+        }
+    
 
         [Test]
         public async Task ShouldConsumeEvent()

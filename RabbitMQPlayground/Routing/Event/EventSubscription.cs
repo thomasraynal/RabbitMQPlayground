@@ -14,9 +14,13 @@ namespace RabbitMQPlayground.Routing
 
             OnEvent = (ev) =>
             {
+                if (!(ev is TEvent)) return;
+
                 OnTypedEvent(ev as TEvent);
             };
         }
+
+        public override string SubscriptionId => $"{Exchange}.{RoutingKey}";
 
         public override bool Equals(object obj)
         {

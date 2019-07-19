@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace RabbitMQPlayground.Routing.Event
+namespace RabbitMQPlayground.Routing
 {
     public class CommandBase : ICommand
     {

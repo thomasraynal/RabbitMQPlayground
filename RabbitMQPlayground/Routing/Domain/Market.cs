@@ -9,22 +9,23 @@ using RabbitMQPlayground.Routing.Event;
 
 namespace RabbitMQPlayground.Routing.Domain
 {
-    public class Market : IPublisher, IDisposable
+    public class Market : IPublisher, ICommandHandler, IDisposable
     {
         private readonly IBus _bus;
-        private string _name;
 
         public List<CurrencyPair> CurrencyPairs { get; }
+
+        public string Name { get; private set; }
 
         public Market(string name, string fxExchange, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
         {
             _bus = new Bus(configuration, connection, logger, eventSerializer);
 
-            _name = name;
+            Name = name;
 
             CurrencyPairs = new List<CurrencyPair>();
 
-            _bus.Handle(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(_name, (command) =>
+            _bus.Handle(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(Name, (command) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == command.AggregateId);
 
@@ -48,7 +49,7 @@ namespace RabbitMQPlayground.Routing.Domain
 
                 return new ChangePriceCommandResult()
                 {
-                    Market = _name
+                    Market = Name
                 };
 
          
@@ -68,6 +69,20 @@ namespace RabbitMQPlayground.Routing.Domain
         public void Dispose()
         {
             _bus.Dispose();
+        }
+
+        public void Handle<TCommand, TCommandResult>(ICommandSubscription<TCommand, TCommandResult> subscription)
+                   where TCommand : class, ICommand
+             where TCommandResult : ICommandResult
+        {
+            _bus.Handle(subscription);
+        }
+
+        public void UnHandle<TCommand, TCommandResult>(ICommandSubscription<TCommand, TCommandResult> subscription)
+               where TCommand : class, ICommand
+             where TCommandResult : ICommandResult
+        {
+            _bus.UnHandle(subscription);
         }
     }
 }

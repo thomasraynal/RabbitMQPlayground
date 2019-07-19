@@ -11,9 +11,10 @@ namespace RabbitMQPlayground.Routing
 
     public interface IEventSubscription
     {
-        Guid SubscriptionId { get; }
+        string SubscriptionId { get; }
         string Exchange { get; }
         string RoutingKey { get; }
+        Type EventType { get; }
         Action<IEvent> OnEvent { get; }
     }
 }

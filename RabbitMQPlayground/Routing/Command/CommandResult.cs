@@ -4,8 +4,8 @@ using System.Text;
 
 namespace RabbitMQPlayground.Routing
 {
-    public interface ICommandResult
+    public class CommandResult : ICommandResult
     {
-        bool IsError { get; set; }
+        public bool IsError { get; set; }
     }
 }

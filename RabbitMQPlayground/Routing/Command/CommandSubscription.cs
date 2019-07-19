@@ -20,6 +20,8 @@ namespace RabbitMQPlayground.Routing
 
         public Func<TCommand, TCommandResult> OnTypedCommand { get; }
 
+        public override string SubscriptionId => $"{Target}.{typeof(TCommand)}";
+
         public override bool Equals(object obj)
         {
             return obj is CommandSubscription<TCommand, TCommandResult> subscription &&

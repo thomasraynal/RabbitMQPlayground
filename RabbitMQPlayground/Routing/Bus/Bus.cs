@@ -14,43 +14,6 @@ namespace RabbitMQPlayground.Routing
     public class Bus : IBus
     {
 
-        class CommandSubscriberDescriptor
-        {
-            public CommandSubscriberDescriptor(EventingBasicConsumer consumer, string queueName, ICommandSubscription subscription)
-            {
-                Consumer = consumer;
-                QueueName = queueName;
-                Subscription = subscription;
-            }
-
-            public string SubscriptionId => $"{QueueName}";
-            public ICommandSubscription Subscription { get; }
-            public EventingBasicConsumer Consumer { get; }
-            public string QueueName { get; }
-        }
-
-        class EventSubscriberDescriptor
-        {
-            private readonly string _exchange;
-            private readonly string _routingKey;
-
-            public EventSubscriberDescriptor(string exchange, string routingKey, EventingBasicConsumer consumer, string queueName)
-            {
-                _exchange = exchange;
-                _routingKey = routingKey;
-
-                Subscriptions = new List<IEventSubscription>();
-                Consumer = consumer;
-                QueueName = queueName;
-            }
-
-            public string SubscriptionId => $"{_exchange}.{_routingKey}";
-
-            public List<IEventSubscription> Subscriptions { get; }
-            public EventingBasicConsumer Consumer { get; }
-            public string QueueName { get; }
-        }
-
         public const string CommandsExchange = "commands";
         public const string RejectedCommandsExchange = "commands-rejected";
 
@@ -75,10 +38,9 @@ namespace RabbitMQPlayground.Routing
 
             _channel = connection.CreateModel();
 
-            _commandsResultQueue = _channel.QueueDeclare(exclusive: true, autoDelete: true).QueueName;
+            DeclareCommandsExchanges();
 
-            _channel.ExchangeDeclare(CommandsExchange, "direct");
-            _channel.ExchangeDeclare(RejectedCommandsExchange, "fanout");
+            _commandsResultQueue = CreateCommandResultHandlingQueue();
 
             _commandResults = new Dictionary<string, TaskCompletionSource<ICommandResult>>();
 
@@ -113,14 +75,12 @@ namespace RabbitMQPlayground.Routing
    
         private EventSubscriberDescriptor GetOrCreateEventSubscriberDescriptor(IEventSubscription subscription)
         {
-            var key = $"{subscription.Exchange}.{subscription.RoutingKey}";
-
-            var subscriberDescriptor = _eventSubscriberDescriptors.FirstOrDefault(s => s.SubscriptionId == key);
+ 
+            var subscriberDescriptor = _eventSubscriberDescriptors.FirstOrDefault(sub => sub.SubscriptionId == subscription.SubscriptionId);
 
             if (null == subscriberDescriptor) {
 
-             
-                //ensure event stream exchange is create, as well as it's dead letters counterpart
+                //ensure event stream exchange is created, as well as it's dead letters counterpart
                 _channel.ExchangeDeclare(exchange: subscription.Exchange, type: "topic", durable: _configuration.IsDurable);
                 _channel.ExchangeDeclare($"{subscription.Exchange}-rejected", "fanout");
 
@@ -161,7 +121,7 @@ namespace RabbitMQPlayground.Routing
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError($"Error while handling event {arg.BasicProperties.Type} by subscriber {subscriber.SubscriptionId} {subscriber.Exchange} {subscriber.RoutingKey}", ex);
+                                _logger.LogError($"Error while handling event {arg.BasicProperties.Type} by subscriber {subscriber.SubscriptionId}", ex);
                             }
                         }
 
@@ -201,15 +161,25 @@ namespace RabbitMQPlayground.Routing
             subscriberDescriptor.Subscriptions.Remove(subscription);
         }
 
-        private void CreateResultHandler(string queueName, string correlationId)
+        private void DeclareCommandsExchanges()
         {
+            _channel.ExchangeDeclare(CommandsExchange, "direct");
+            _channel.ExchangeDeclare(RejectedCommandsExchange, "fanout");
+        }
+
+        private string CreateCommandResultHandlingQueue()
+        {
+           var  queueName = _channel.QueueDeclare(exclusive: true, autoDelete: true).QueueName;
+
             var resultHandler = new EventingBasicConsumer(_channel);
 
             resultHandler.Received += (model, arg) =>
             {
                 var body = arg.Body;
                 var response = Encoding.UTF8.GetString(body);
-                if (arg.BasicProperties.CorrelationId == correlationId)
+                var correlationId = arg.BasicProperties.CorrelationId;
+
+                if (_commandResults.ContainsKey(correlationId))
                 {
                     var task = _commandResults[correlationId];
                     var type = Type.GetType(arg.BasicProperties.Type);
@@ -226,6 +196,8 @@ namespace RabbitMQPlayground.Routing
                consumer: resultHandler,
                queue: queueName,
                autoAck: true);
+
+            return queueName;
         }
 
         public Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult
@@ -242,8 +214,6 @@ namespace RabbitMQPlayground.Routing
             properties.CorrelationId = correlationId;
             properties.ReplyTo = _commandsResultQueue;
 
-            CreateResultHandler(_commandsResultQueue, correlationId);
-
             _commandResults.Add(correlationId, task);
 
             var cancel = new CancellationTokenSource(_configuration.CommandTimeout);
@@ -256,7 +226,17 @@ namespace RabbitMQPlayground.Routing
                 mandatory : true,
                 body: body);
 
-            return task.Task.ContinueWith(t => (TCommandResult)t.Result, cancel.Token);
+            return task.Task.ContinueWith(t =>
+            {
+
+                if (t.Result.IsError)
+                {
+                    throw new CommandFailureException(t as ICommandErrorResult);
+                }
+
+                return (TCommandResult)t.Result;
+
+            }, cancel.Token);
 
         }
 
@@ -265,15 +245,20 @@ namespace RabbitMQPlayground.Routing
              where TCommandResult : ICommandResult
         {
             var target = subscription.Target;
+            var subscriptionId = subscription.SubscriptionId;
 
-            if (_commandSubscriberDescriptors.Any(subscriber => subscriber.SubscriptionId == target)) throw new InvalidOperationException($"Bus already have an handler for {subscription.SubscriptionId}");
+            if (_commandSubscriberDescriptors.Any(subscriber => subscriber.SubscriptionId == subscriptionId)) throw new InvalidOperationException($"Bus already have an handler for {subscriptionId}");
 
-            _channel.QueueDeclare(queue: target, durable: false, exclusive: true, autoDelete: true, arguments: new Dictionary<string, object>
+            if (!_commandSubscriberDescriptors.Any(subscriber => subscriber.ExchangeName == target))
+            {
+                _channel.QueueDeclare(queue: target, durable: false, exclusive: true, autoDelete: true, arguments: new Dictionary<string, object>
                     {
                         {"x-dead-letter-exchange", RejectedCommandsExchange},
                     });
 
-            _channel.QueueBind(queue: target, exchange: CommandsExchange, routingKey: target);
+                _channel.QueueBind(queue: target, exchange: CommandsExchange, routingKey: target);
+
+            }
 
             var consumer = new EventingBasicConsumer(_channel);
 
@@ -281,26 +266,30 @@ namespace RabbitMQPlayground.Routing
                                   autoAck: false,
                                   consumer: consumer);
 
-            var subscriberDescriptor = new CommandSubscriberDescriptor(consumer, target, subscription);
+            var subscriberDescriptor = new CommandSubscriberDescriptor(consumer, target, subscriptionId, subscription);
 
             consumer.Received += (model, arg) =>
             {
+                var properties = arg.BasicProperties;
+                var body = arg.Body;
+
+                var replyProperties = _channel.CreateBasicProperties();
+                replyProperties.CorrelationId = properties.CorrelationId;
+                replyProperties.ContentType = _eventSerializer.Serializer.ContentMIMEType;
+                replyProperties.ContentEncoding = _eventSerializer.Serializer.ContentEncoding;
+
                 try
                 {
-
-                    var properties = arg.BasicProperties;
-                    var body = arg.Body;
-                    var type = Type.GetType(arg.BasicProperties.Type);
+                    var type = Type.GetType(properties.Type);
                     var message = (ICommand)_eventSerializer.Serializer.Deserialize(body, type);
 
-                    var descriptor = _commandSubscriberDescriptors.FirstOrDefault(subscriber => subscriber.SubscriptionId == message.Target);
+                    var descriptor = _commandSubscriberDescriptors.FirstOrDefault(subscriber => subscriber.SubscriptionId == $"{subscriber.ExchangeName}.{type}");
+
+                    if (null == descriptor) throw new NotImplementedException($"No command handler for {type}");
+
                     var commandResult = descriptor.Subscription.OnCommand(message);
 
-                    var replyProperties = _channel.CreateBasicProperties();
-                    replyProperties.CorrelationId = properties.CorrelationId;
                     replyProperties.Type = typeof(TCommandResult).ToString();
-                    properties.ContentType = _eventSerializer.Serializer.ContentMIMEType;
-                    properties.ContentEncoding = _eventSerializer.Serializer.ContentEncoding;
 
                     var replyMessage = _eventSerializer.Serializer.Serialize(commandResult);
 
@@ -311,6 +300,19 @@ namespace RabbitMQPlayground.Routing
                 catch (Exception ex)
                 {
                     _channel.BasicReject(deliveryTag: arg.DeliveryTag, requeue: false);
+
+                    //todo: error handler with message and code
+                    var error = new CommandErrorResult()
+                    {
+                        ErrorCode = 500,
+                        ErrorMessage = "Unable to process the commmand"
+                    };
+
+                    replyProperties.Type = typeof(CommandErrorResult).ToString();
+
+                    var replyMessage = _eventSerializer.Serializer.Serialize(error);
+
+                    _channel.BasicPublish(exchange: string.Empty, routingKey: properties.ReplyTo, mandatory: true, basicProperties: replyProperties, body: replyMessage);
 
                     _logger.LogError($"Error while handling command {arg.BasicProperties.Type}", ex);
 

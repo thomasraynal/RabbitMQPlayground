@@ -12,7 +12,7 @@ namespace RabbitMQPlayground.Routing
             Target = queueName;
         }
 
-        public Guid SubscriptionId { get; }
+        public abstract string  SubscriptionId { get; }
 
         public string Target { get; }
 

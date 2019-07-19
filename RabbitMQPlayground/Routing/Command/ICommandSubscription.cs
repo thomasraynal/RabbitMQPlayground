@@ -12,7 +12,7 @@ namespace RabbitMQPlayground.Routing
 
     public interface ICommandSubscription
     {
-        Guid SubscriptionId { get; }
+        string SubscriptionId { get; }
         string Target { get; }
         Func<ICommand, ICommandResult> OnCommand { get; }
     }
