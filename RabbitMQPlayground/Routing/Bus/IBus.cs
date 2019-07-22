@@ -7,6 +7,5 @@ namespace RabbitMQPlayground.Routing
 {
     public interface IBus : IActor, IPublisher, ISubscriber, ICommandHandler
     { 
-
     }
 }

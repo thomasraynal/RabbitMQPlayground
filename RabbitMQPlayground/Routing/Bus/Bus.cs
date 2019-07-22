@@ -21,6 +21,7 @@ namespace RabbitMQPlayground.Routing
         private readonly string _commandsResultQueue;
         private readonly List<EventSubscriberDescriptor> _eventSubscriberDescriptors;
         private readonly List<CommandSubscriberDescriptor> _commandSubscriberDescriptors;
+        private readonly IConnection _connection;
         private readonly Dictionary<string, TaskCompletionSource<ICommandResult>> _commandResults;
         private readonly IEventSerializer _eventSerializer;
         private readonly IBusConfiguration _configuration;
@@ -36,6 +37,7 @@ namespace RabbitMQPlayground.Routing
             _eventSubscriberDescriptors = new List<EventSubscriberDescriptor>();
             _commandSubscriberDescriptors = new List<CommandSubscriberDescriptor>();
 
+            _connection = connection;
             _channel = connection.CreateModel();
 
             DeclareCommandsExchanges();
@@ -51,6 +53,7 @@ namespace RabbitMQPlayground.Routing
         public void Dispose()
         {
             _channel.Dispose();
+            _connection.Dispose();
         }
 
         public void Emit(IEvent @event, string exchange)
@@ -231,7 +234,7 @@ namespace RabbitMQPlayground.Routing
 
                 if (t.Result.IsError)
                 {
-                    throw new CommandFailureException(t as ICommandErrorResult);
+                    throw new CommandFailureException(t.Result as ICommandErrorResult);
                 }
 
                 return (TCommandResult)t.Result;
@@ -287,6 +290,7 @@ namespace RabbitMQPlayground.Routing
 
                     if (null == descriptor) throw new NotImplementedException($"No command handler for {type}");
 
+                    //todo: allow task
                     var commandResult = descriptor.Subscription.OnCommand(message);
 
                     replyProperties.Type = typeof(TCommandResult).ToString();

@@ -1,10 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
-using RabbitMQ.Client;
+﻿using RabbitMQ.Client;
 using RabbitMQPlayground.Routing.Event;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.Routing.Domain
@@ -14,17 +12,19 @@ namespace RabbitMQPlayground.Routing.Domain
         public List<CurrencyPair> CurrencyPairs { get; }
 
         private readonly IBus _bus;
-        private readonly string _fxExchange;
+        private readonly ITraderConfiguration _configuration;
 
-        public Trader(string fxExchange, Expression<Func<PriceChangedEvent, bool>> routingStrategy, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
+        public Trader(ITraderConfiguration traderConfiguration, IBusConfiguration busConfiguration, IConnection connection)
         {
             CurrencyPairs = new List<CurrencyPair>();
 
-            _bus = new Bus(configuration, connection, logger, eventSerializer);
+            var container = BusFactory.CreateContainer<RegistryForTests>(connection, busConfiguration);
 
-            _fxExchange = fxExchange;
+            _bus = container.GetInstance<IBus>();
 
-            _bus.Subscribe(new EventSubscription<PriceChangedEvent>(fxExchange, routingStrategy, (@event) =>
+            _configuration = traderConfiguration;
+
+            _bus.Subscribe(new EventSubscription<PriceChangedEvent>(_configuration.EventExchange, _configuration.RoutingStrategy, (@event) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == @event.AggregateId);
 
@@ -46,7 +46,7 @@ namespace RabbitMQPlayground.Routing.Domain
 
         public void Emit(IEvent @event)
         {
-            _bus.Emit(@event, _fxExchange);
+            _bus.Emit(@event, _configuration.EventExchange);
         }
 
         public async Task<TCommandResult> Send<TCommandResult>(ICommand command) where TCommandResult : ICommandResult

@@ -15,17 +15,19 @@ namespace RabbitMQPlayground.Routing.Domain
 
         public List<CurrencyPair> CurrencyPairs { get; }
 
-        public string Name { get; private set; }
+        public IMarketConfiguration Configuration { get; private set; }
 
-        public Market(string name, string fxExchange, IBusConfiguration configuration, IConnection connection, ILogger logger, IEventSerializer eventSerializer)
+        public Market(IMarketConfiguration marketConfiguration, IBusConfiguration configuration, IConnection connection)
         {
-            _bus = new Bus(configuration, connection, logger, eventSerializer);
+            var container = BusFactory.CreateContainer<RegistryForTests>(connection, configuration);
 
-            Name = name;
+            _bus = container.GetInstance<IBus>();
+
+            Configuration = marketConfiguration;
 
             CurrencyPairs = new List<CurrencyPair>();
 
-            _bus.Handle(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(Name, (command) =>
+            _bus.Handle(new CommandSubscription<ChangePriceCommand, ChangePriceCommandResult>(Configuration.Name, (command) =>
             {
                 var ccyPair = CurrencyPairs.FirstOrDefault(ccy => ccy.Id == command.AggregateId);
 
@@ -45,11 +47,11 @@ namespace RabbitMQPlayground.Routing.Domain
                     Ask = command.Ask,
                     Bid = command.Bid,
                     Counterparty = command.Counterparty,
-                }, fxExchange);
+                }, Configuration.EventExchange);
 
                 return new ChangePriceCommandResult()
                 {
-                    Market = Name
+                    Market = Configuration.Name
                 };
 
          
