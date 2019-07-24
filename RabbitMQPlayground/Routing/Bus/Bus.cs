@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using RabbitMQPlayground.Routing.Event;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -84,8 +83,8 @@ namespace RabbitMQPlayground.Routing
             if (null == subscriberDescriptor) {
 
                 //ensure event stream exchange is created, as well as it's dead letters counterpart
-                _channel.ExchangeDeclare(exchange: subscription.Exchange, type: "topic", durable: _configuration.IsDurable);
-                _channel.ExchangeDeclare($"{subscription.Exchange}-rejected", "fanout");
+                _channel.ExchangeDeclare(exchange: subscription.Exchange, type: "topic", durable: false, autoDelete: true);
+                _channel.ExchangeDeclare($"{subscription.Exchange}-rejected", "fanout", durable: false, autoDelete: true);
 
                 var queueName = _channel.QueueDeclare(exclusive: true, autoDelete: true, arguments: new Dictionary<string, object>
                     {
@@ -166,8 +165,8 @@ namespace RabbitMQPlayground.Routing
 
         private void DeclareCommandsExchanges()
         {
-            _channel.ExchangeDeclare(CommandsExchange, "direct");
-            _channel.ExchangeDeclare(RejectedCommandsExchange, "fanout");
+            _channel.ExchangeDeclare(CommandsExchange, "direct", durable: false, autoDelete: true);
+            _channel.ExchangeDeclare(RejectedCommandsExchange, "fanout", durable: false, autoDelete: true);
         }
 
         private string CreateCommandResultHandlingQueue()

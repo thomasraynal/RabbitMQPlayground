@@ -6,7 +6,7 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public class Payload
     {
-        public Type WorkLoadType { get; }
-        public byte [] WorkLoad { get; }
+        public Type WorkLoadType { get; set; }
+        public byte [] WorkLoad { get; set; }
     }
 }

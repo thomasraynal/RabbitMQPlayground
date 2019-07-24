@@ -43,21 +43,6 @@ namespace RabbitMQPlayground.Routing
 
         }
 
-        [OneTimeTearDown]
-        public void OneTimeTearDown()
-        {
-            var factory = new ConnectionFactory() { HostName = "localhost" };
-
-            using (var connection = factory.CreateConnection())
-            using (var channel = connection.CreateModel())
-            {
-                channel.ExchangeDelete(_fxEventsExchange);
-                channel.ExchangeDelete(_fxRejectedEventsExchange);
-                channel.ExchangeDelete(Bus.CommandsExchange);
-                channel.ExchangeDelete(Bus.RejectedCommandsExchange);
-            }
-        }
-
         [Test]
         public void ShouldNotSerializeAnEventAsRabbitSubject()
         {
@@ -145,7 +130,7 @@ namespace RabbitMQPlayground.Routing
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
 
             var marketConfiguration = new MarketConfiguration(_marketExchange, _fxEventsExchange);
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => true);
@@ -217,7 +202,7 @@ namespace RabbitMQPlayground.Routing
 
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
 
             var traderConnection = factory.CreateConnection();
             var marketConnection = factory.CreateConnection();
@@ -265,7 +250,7 @@ namespace RabbitMQPlayground.Routing
         {
 
             var factory = new ConnectionFactory() { HostName = "localhost" };
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
             var traderConnection = factory.CreateConnection();
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => ev.Counterparty == "SGCIB");
 
@@ -326,10 +311,14 @@ namespace RabbitMQPlayground.Routing
             var eventSerializer = new EventSerializer(serializer);
             var logger = new LoggerForTests();
             var factory = new ConnectionFactory() { HostName = "localhost" };
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
 
             using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
             {
+
+                channel.ExchangeDeclare(exchange: _fxEventsExchange, type: "topic", durable: false, autoDelete: true);
+
 
                 var bus = new Bus(busConfiguration, connection, logger, eventSerializer);
 
@@ -338,8 +327,8 @@ namespace RabbitMQPlayground.Routing
 
                 void reset()
                 {
-                     sgcibHasBeenCalled = false;
-                     bnpHasBeenCalled = false;
+                    sgcibHasBeenCalled = false;
+                    bnpHasBeenCalled = false;
                 };
 
                 var sgcibSubscription = new EventSubscription<PriceChangedEvent>(_fxEventsExchange, ev => ev.Counterparty == "SGCIB", (@event) =>
@@ -426,7 +415,7 @@ namespace RabbitMQPlayground.Routing
    
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => true);
             var traderConnection = factory.CreateConnection();
 
@@ -474,7 +463,7 @@ namespace RabbitMQPlayground.Routing
 
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false)
+            var busConfiguration = new BusConfiguration()
             {
                 CommandTimeout = TimeSpan.FromMilliseconds(500)
             };
@@ -536,7 +525,7 @@ namespace RabbitMQPlayground.Routing
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
 
             var traderConnection = factory.CreateConnection();
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => true);
@@ -580,7 +569,7 @@ namespace RabbitMQPlayground.Routing
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
-            var busConfiguration = new BusConfiguration(false);
+            var busConfiguration = new BusConfiguration();
 
             var traderConnection = factory.CreateConnection();
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => true);

@@ -11,14 +11,14 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public class Worker<TArgument, TResult> : IWorker<TArgument, TResult>
     {
-        private IWorkerConfiguration _configuration;
-        private ISerializer _serializer;
-        private IModel _channel;
-        private BlockingCollection<IScheduledWorkload<TArgument, TResult>> _workloads;
-        private CancellationTokenSource _cancel;
-        private Task _workProc;
-        private string _workerQueue;
-        private string _workerQueueName;
+        private readonly IWorkerConfiguration _configuration;
+        private readonly ISerializer _serializer;
+        private readonly IModel _channel;
+        private readonly BlockingCollection<IScheduledWorkload<TArgument, TResult>> _workloads;
+        private readonly CancellationTokenSource _cancel;
+        private readonly Task _workProc;
+        private readonly string _workerQueue;
+        private readonly string _workerQueueName;
 
         public Worker(IWorkerConfiguration configuration, ISerializer serializer)
         {
@@ -27,8 +27,6 @@ namespace RabbitMQPlayground.LoadBalancing
             _serializer = serializer;
 
             _channel = _configuration.Connection.CreateModel();
-            _serializer = serializer;
-
             _workloads = new BlockingCollection<IScheduledWorkload<TArgument, TResult>>();
 
             _cancel = new CancellationTokenSource();
@@ -114,7 +112,7 @@ namespace RabbitMQPlayground.LoadBalancing
 
         public async Task DoWork()
         {
-            foreach (var workload in _workloads.GetConsumingEnumerable())
+            foreach (var workload in _workloads.GetConsumingEnumerable(_cancel.Token))
             {
                 var result = await Handle(workload.Workload.Work, workload.Workload.Argument);
 

@@ -7,13 +7,11 @@ namespace RabbitMQPlayground.Routing
 {
     public class BusConfiguration : IBusConfiguration
     {
-        public BusConfiguration(bool isDurable)
+        public BusConfiguration()
         {
-            IsDurable = isDurable;
             CommandTimeout = TimeSpan.FromSeconds(1);
         }
 
-        public bool IsDurable { get; set; }
         public TimeSpan CommandTimeout { get; set; }
     }
 }

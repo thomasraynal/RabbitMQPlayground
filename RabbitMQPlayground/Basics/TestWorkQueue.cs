@@ -32,7 +32,7 @@ namespace RabbitMQPlayground
                 channel.QueueDeclare(queue: "task_queue",
                                      durable: true,
                                      exclusive: false,
-                                     autoDelete: false,
+                                     autoDelete: true,
                                      arguments: null);
 
                 channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);

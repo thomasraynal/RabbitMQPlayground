@@ -29,7 +29,7 @@ namespace RabbitMQPlayground
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.QueueDeclare(queue: "rpc_queue", durable: false, exclusive: false, autoDelete: false, arguments: null);
+                channel.QueueDeclare(queue: "rpc_queue", durable: false, exclusive: false, autoDelete: true, arguments: null);
                 channel.BasicQos(0, 1, false);
 
                 var server = new EventingBasicConsumer(channel);

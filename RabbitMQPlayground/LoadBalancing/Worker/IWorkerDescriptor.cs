@@ -6,6 +6,7 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public interface IWorkerDescriptor
     {
-        Guid Id { get; set; }
+        string Id { get; set; }
+
     }
 }

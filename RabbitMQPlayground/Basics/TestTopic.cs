@@ -30,7 +30,7 @@ namespace RabbitMQPlayground
                 });
 
 
-                channel.ExchangeDeclare(exchange: "topic_logs", type: "topic");
+                channel.ExchangeDeclare(exchange: "topic_logs", type: "topic", autoDelete: true);
 
                 var queueName = channel.QueueDeclare().QueueName;
 

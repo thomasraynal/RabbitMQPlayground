@@ -29,7 +29,8 @@ namespace RabbitMQPlayground
             using (var channel = connection.CreateModel())
             {
                 channel.ExchangeDeclare(exchange: "direct_logs",
-                                        type: "direct");
+                                        type: "direct",
+                                        autoDelete: true);
 
 
                 var consumer = new EventingBasicConsumer(channel);

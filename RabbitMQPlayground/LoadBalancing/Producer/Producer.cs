@@ -14,7 +14,7 @@ namespace RabbitMQPlayground.LoadBalancing
         private IProducerConfiguration _producerConfiguration;
         private readonly IModel _channel;
         private readonly ISerializer _serializer;
-        private readonly string _commandsResultQueue;
+        private readonly string _workResultQueue;
         private readonly Dictionary<string, TaskCompletionSource<IWorkResult>> _commandResults;
 
         public Producer(IProducerConfiguration producerConfiguration, ISerializer serializer)
@@ -27,7 +27,7 @@ namespace RabbitMQPlayground.LoadBalancing
 
             _commandResults = new Dictionary<string, TaskCompletionSource<IWorkResult>>();
 
-            _commandsResultQueue = CreateCommandResultHandlingQueue();
+            _workResultQueue = CreateCommandResultHandlingQueue();
 
             _channel.QueueDeclare(queue: _producerConfiguration.BrokerWorkloadQueue, 
                                   durable: false, 
@@ -90,7 +90,7 @@ namespace RabbitMQPlayground.LoadBalancing
             properties.ContentEncoding = _serializer.ContentEncoding;
             properties.Type = work.GetType().ToString();
             properties.CorrelationId = correlationId;
-            properties.ReplyTo = _commandsResultQueue;
+            properties.ReplyTo = _workResultQueue;
 
             _commandResults.Add(correlationId, task);
 
