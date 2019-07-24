@@ -7,6 +7,6 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public interface IProducer : IActor
     {
-        Task<TResult> SendWork<TArgument, TResult>(IWork<TArgument, TResult> work) where TResult : class, IWorkResult;
+        Task<TResult> SendWork<TArgument, TResult>(IWorkload<TArgument, TResult> work) where TResult : class, IWorkResult;
     }
 }

@@ -28,7 +28,7 @@ namespace RabbitMQPlayground
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.ExchangeDeclare(exchange: "logs", type: "fanout", autoDelete: true);
+                channel.ExchangeDeclare(exchange: "logs", type: "fanout", durable: false, autoDelete: true);
 
                 var queueName = channel.QueueDeclare().QueueName;
                 channel.QueueBind(queue: queueName,

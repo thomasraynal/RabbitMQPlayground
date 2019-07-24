@@ -9,7 +9,7 @@ using RabbitMQ.Client.Events;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class Worker<TArgument, TResult> : IWorker<TArgument, TResult>
+    public class Worker<TArgument, TResult> : IWorker<TArgument, TResult> where TResult : class, IWorkResult
     {
         private readonly IWorkerConfiguration _configuration;
         private readonly ISerializer _serializer;
@@ -20,6 +20,8 @@ namespace RabbitMQPlayground.LoadBalancing
         private readonly string _workerQueue;
         private readonly string _workerQueueName;
 
+        private readonly IWorkerDescriptor _self;
+
         public Worker(IWorkerConfiguration configuration, ISerializer serializer)
         {
             Id = Guid.NewGuid();
@@ -28,6 +30,8 @@ namespace RabbitMQPlayground.LoadBalancing
 
             _channel = _configuration.Connection.CreateModel();
             _workloads = new BlockingCollection<IScheduledWorkload<TArgument, TResult>>();
+
+            _self = new WorkerDescriptor() { Id = Id.ToString() };
 
             _cancel = new CancellationTokenSource();
 
@@ -101,6 +105,9 @@ namespace RabbitMQPlayground.LoadBalancing
                queue: _workerQueueName,
                autoAck: false);
 
+
+            SignalReadyForWork();
+
         }
 
         public Guid Id { get; private set; }
@@ -108,6 +115,23 @@ namespace RabbitMQPlayground.LoadBalancing
         public void Schedule(IScheduledWorkload<TArgument, TResult> workload)
         {
             _workloads.Add(workload);
+        }
+
+        public void SignalReadyForWork()
+        {
+            var properties = _channel.CreateBasicProperties();
+            properties.ContentType = _serializer.ContentMIMEType;
+            properties.ContentEncoding = _serializer.ContentEncoding;
+            properties.Type = typeof(WorkerDescriptor).ToString();
+
+            var message = _serializer.Serialize(_self);
+
+            _channel.BasicPublish(
+                     exchange: string.Empty,
+                     routingKey: _configuration.BrokerWorkerRegistrationQueue,
+                     mandatory: true,
+                     basicProperties: properties,
+                     body: message);
         }
 
         public async Task DoWork()
@@ -131,6 +155,9 @@ namespace RabbitMQPlayground.LoadBalancing
                       mandatory: true,
                       basicProperties: replyProperties,
                       body: replyMessage);
+
+
+                SignalReadyForWork();
             }
         }
 

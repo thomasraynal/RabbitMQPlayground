@@ -43,6 +43,22 @@ namespace RabbitMQPlayground.Routing
 
         }
 
+        [OneTimeTearDown]
+        public void OneTimeTearDown()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
+            {
+                channel.ExchangeDelete(_fxEventsExchange);
+                channel.ExchangeDelete(_fxRejectedEventsExchange);
+                channel.ExchangeDelete(Bus.CommandsExchange);
+                channel.ExchangeDelete(Bus.RejectedCommandsExchange);
+            }
+        }
+
+
         [Test]
         public void ShouldNotSerializeAnEventAsRabbitSubject()
         {
@@ -469,9 +485,6 @@ namespace RabbitMQPlayground.Routing
             };
 
             var traderConnection = factory.CreateConnection();
-            var marketConnection = factory.CreateConnection();
-
-            var marketConfiguration = new MarketConfiguration(_marketExchange, _fxEventsExchange);
             var traderConfiguration = new TraderConfiguration(_fxEventsExchange, (ev) => true);
 
             using (var connection = factory.CreateConnection())
@@ -502,6 +515,9 @@ namespace RabbitMQPlayground.Routing
                 {
                     await trader.Send<ChangePriceCommandResult>(new ChangePriceCommand("EUR/USD", _marketExchange));
                 });
+
+                var marketConnection = factory.CreateConnection();
+                var marketConfiguration = new MarketConfiguration(_marketExchange, _fxEventsExchange);
 
                 //create an handler for the command
                 using (var market = new Market(marketConfiguration, busConfiguration, marketConnection))

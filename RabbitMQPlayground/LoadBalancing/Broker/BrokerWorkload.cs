@@ -4,13 +4,13 @@ using System.Text;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class Workload
+    public class BrokerWorkload
     {
-        public Workload()
+        public BrokerWorkload()
         {
         }
 
-        public Workload(Payload payload, string producerId, string correlationId)
+        public BrokerWorkload(Payload payload, string producerId, string correlationId)
         {
             Payload = payload;
             ProducerId = producerId;

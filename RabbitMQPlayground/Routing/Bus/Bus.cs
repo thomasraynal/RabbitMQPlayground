@@ -171,7 +171,7 @@ namespace RabbitMQPlayground.Routing
 
         private string CreateCommandResultHandlingQueue()
         {
-           var  queueName = _channel.QueueDeclare(exclusive: true, autoDelete: true).QueueName;
+            var queueName = _channel.QueueDeclare(exclusive: true, durable: false, autoDelete: true).QueueName;
 
             var resultHandler = new EventingBasicConsumer(_channel);
 

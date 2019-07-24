@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public interface IWork<TArgument, TResult>
+    public interface IWork<TArgument, TResult> where TResult : class, IWorkResult
     {
         Task<TResult> Execute(TArgument arg);
     }

@@ -12,7 +12,7 @@ namespace RabbitMQPlayground.LoadBalancing
         private readonly IBrokerConfiguration _configuration;
         private readonly ISerializer _serializer;
         private readonly IModel _channel;
-        private readonly BlockingCollection<Workload> _workloads;
+        private readonly BlockingCollection<BrokerWorkload> _workloads;
         private readonly BlockingCollection<IWorkerDescriptor> _workers;
         private CancellationTokenSource _cancel;
         private readonly Task _workProc;
@@ -21,6 +21,9 @@ namespace RabbitMQPlayground.LoadBalancing
         {
             _configuration = configuration;
             _serializer = serializer;
+
+            _workloads = new BlockingCollection<BrokerWorkload>();
+            _workers = new BlockingCollection<IWorkerDescriptor>();
 
             _channel = _configuration.Connection.CreateModel();
 
@@ -54,7 +57,7 @@ namespace RabbitMQPlayground.LoadBalancing
                     WorkLoadType = Type.GetType(workloadType)
                 };
 
-                var workload = new Workload(payload, producerId, correlationId);
+                var workload = new BrokerWorkload(payload, producerId, correlationId);
 
                 _workloads.Add(workload);
 

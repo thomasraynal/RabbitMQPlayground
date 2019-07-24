@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace RabbitMQPlayground.LoadBalancing.Domain
+namespace RabbitMQPlayground.LoadBalancing
 {
     public class DoSomethingResult : IWorkResult
     {
-        public bool IsError { get; }
-        public String Result { get; }
+        public bool IsError { get; set; }
+        public String Result { get; set; }
     }
 }

@@ -78,14 +78,14 @@ namespace RabbitMQPlayground.LoadBalancing
             return queueName;
         }
 
-        public Task<TResult> SendWork<TArgument, TResult>(IWork<TArgument,TResult> work) where TResult : class, IWorkResult
+        public Task<TResult> SendWork<TArgument, TResult>(IWorkload<TArgument,TResult> work) where TResult : class, IWorkResult
         {
             var task = new TaskCompletionSource<IWorkResult>();
-            var properties = _channel.CreateBasicProperties();
+          
             var correlationId = Guid.NewGuid().ToString();
-
             var body = _serializer.Serialize(work);
 
+            var properties = _channel.CreateBasicProperties();
             properties.ContentType = _serializer.ContentMIMEType;
             properties.ContentEncoding = _serializer.ContentEncoding;
             properties.Type = work.GetType().ToString();

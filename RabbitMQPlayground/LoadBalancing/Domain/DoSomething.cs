@@ -4,15 +4,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RabbitMQPlayground.LoadBalancing.Domain
+namespace RabbitMQPlayground.LoadBalancing
 {
-    public class DoSomething : IWork<int, string>
+    public class DoSomething : IWork<int, DoSomethingResult>
     {
-        public Task<string> Execute(int arg)
+        public Task<DoSomethingResult> Execute(int arg)
         {
-            return Task.FromResult(Enumerable.Range(0, arg)
+            var str = Enumerable.Range(0, arg)
                                              .Select(index => index.ToString())
-                                             .Aggregate((i1, i2) => $"{i1}{i2}"));
+                                             .Aggregate((i1, i2) => $"{i1}{i2}");
+
+            return Task.FromResult(new DoSomethingResult()
+            {
+                Result = str
+            });
         }
     }
 }

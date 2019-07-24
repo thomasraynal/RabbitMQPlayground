@@ -30,6 +30,7 @@ namespace RabbitMQPlayground
             {
                 channel.ExchangeDeclare(exchange: "direct_logs",
                                         type: "direct",
+                                        durable: false,
                                         autoDelete: true);
 
 

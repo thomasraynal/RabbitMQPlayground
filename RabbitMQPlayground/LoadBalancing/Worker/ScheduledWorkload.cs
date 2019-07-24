@@ -4,7 +4,7 @@ using System.Text;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class ScheduledWorkload<TArgument, TResult> : IScheduledWorkload<TArgument, TResult>
+    public class ScheduledWorkload<TArgument, TResult> : IScheduledWorkload<TArgument, TResult> where TResult : class, IWorkResult
     {
         public ScheduledWorkload(IWorkload<TArgument, TResult> workload, IProducerDescriptor producerDescriptor)
         {
