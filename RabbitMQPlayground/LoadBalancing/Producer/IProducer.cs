@@ -1,0 +1,12 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace RabbitMQPlayground.LoadBalancing
+{
+    public interface IProducer : IActor
+    {
+        Task<TResult> SendWork<TArgument, TResult>(IWork<TArgument, TResult> work) where TResult : class, IWorkResult;
+    }
+}
