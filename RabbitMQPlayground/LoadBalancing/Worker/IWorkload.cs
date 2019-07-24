@@ -7,6 +7,6 @@ namespace RabbitMQPlayground.LoadBalancing
     public interface IWorkload<TArgument, TResult>
     {
         IWork<TArgument, TResult> Work { get; }
-        IProducerDescriptor ProducerDescriptor { get; }
+        TArgument Argument { get; }
     }
 }

@@ -6,6 +6,7 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public interface IProducerDescriptor
     {
-        Guid Id { get; set; }
+        string Id { get; }
+        string CorrelationId { get; }
     }
 }

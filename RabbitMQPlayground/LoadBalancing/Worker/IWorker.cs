@@ -7,6 +7,7 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     interface IWorker<TArgument, TResult> : IActor
     {
-        Task Handle(IWork<TArgument, TResult> work, IProducerDescriptor producerDescriptor);
+        void Schedule(IScheduledWorkload<TArgument, TResult> workload);
+        Task<TResult> Handle(IWork<TArgument, TResult> work, TArgument argument);
     }
 }
