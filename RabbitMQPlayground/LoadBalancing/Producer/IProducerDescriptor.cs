@@ -8,5 +8,6 @@ namespace RabbitMQPlayground.LoadBalancing
     {
         string Id { get; }
         string CorrelationId { get; }
+        ulong DeliveryTag { get; }
     }
 }

@@ -48,7 +48,7 @@ namespace RabbitMQPlayground.LoadBalancing
         }
 
         [Test]
-        public async Task ShouldLoadBalancedBetweenWorkers()
+        public async Task ShouldLoadBalanceBetweenWorkers()
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
@@ -86,10 +86,134 @@ namespace RabbitMQPlayground.LoadBalancing
         }
 
         [Test]
+        public async Task ShouldReplayFailedJobAndDropAtTheSecondRetry()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var producerConnection = factory.CreateConnection();
+            var workerConnection = factory.CreateConnection();
+            var brokerConnection = factory.CreateConnection();
+
+            var serializer = new JsonNetSerializer();
+
+            var producerConfiguration = new ProducerConfiguration(producerConnection, brokerWorkloadQueue, TimeSpan.FromSeconds(2));
+            var workerConfiguration = new WorkerConfiguration(workerConnection, brokerWorkerRegistrationQueue);
+            var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
+
+            using (var broker = new Broker(brokerConfiguration, serializer))
+            using (var worker = new Worker(workerConfiguration, serializer))
+            using (var producer = new Producer(producerConfiguration, serializer))
+            {
+                await Task.Delay(500);
+
+                var workload = new Workload()
+                {
+                    Argument = false,
+                    Work = new DoThrow()
+                };
+
+                Assert.ThrowsAsync<TaskCanceledException>(async () =>
+               {
+                   await producer.SendWork<DoThrowResult>(workload);
+               });
+
+
+            }
+        }
+
+        [Test]
+        public async Task ShouldReplayFailedJob()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var producerConnection = factory.CreateConnection();
+            var workerConnection = factory.CreateConnection();
+            var brokerConnection = factory.CreateConnection();
+
+            var serializer = new JsonNetSerializer();
+
+            var producerConfiguration = new ProducerConfiguration(producerConnection, brokerWorkloadQueue, TimeSpan.FromSeconds(5));
+            var workerConfiguration = new WorkerConfiguration(workerConnection, brokerWorkerRegistrationQueue);
+            var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
+
+            using (var broker = new Broker(brokerConfiguration, serializer))
+            using (var worker = new Worker(workerConfiguration, serializer))
+            using (var producer = new Producer(producerConfiguration, serializer))
+            {
+                await Task.Delay(500);
+
+                var workload = new Workload()
+                {
+                    Argument = true,
+                    Work = new DoThrow()
+                };
+
+                var result = await producer.SendWork<DoThrowResult>(workload);
+
+                Assert.IsNotNull(result);
+                Assert.IsFalse(result.IsError);
+                Assert.AreEqual(2, result.TryOuts);
+            }
+        }
+
+        [Test]
         public async Task ShouldRecoverOnFailure()
         {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
 
+            var producerConnection = factory.CreateConnection();
+            var brokerConnection = factory.CreateConnection();
 
+            var serializer = new JsonNetSerializer();
+
+            var producerConfiguration = new ProducerConfiguration(producerConnection, brokerWorkloadQueue, TimeSpan.FromSeconds(10));
+            var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
+
+            using (var broker = new Broker(brokerConfiguration, serializer))
+            using (var producer = new Producer(producerConfiguration, serializer))
+            {
+                var worker1Connection = factory.CreateConnection();
+                var worker1Configuration = new WorkerConfiguration(worker1Connection, brokerWorkerRegistrationQueue);
+
+                var worker1 = new Worker(worker1Configuration, serializer);
+
+                await Task.Delay(200);
+
+                var results = new List<DoSomeHeavyWorkResult>();
+
+                var tasks = Enumerable.Range(0, 5).Select(index => new Workload()
+                {
+                    Argument = 500,
+                    Work = new DoSomeHeavyWork()
+                });
+
+                foreach (var work in tasks)
+                {
+                    producer.SendWork<DoSomeHeavyWorkResult>(work).ContinueWith(task =>
+                    {
+                        results.Add(task.Result);
+                    });
+                }
+
+                await Task.Delay(1000);
+
+                Assert.Greater(results.Count(), 0);
+
+                worker1.Dispose();
+
+                await Task.Delay(200);
+
+                var count = results.Count();
+
+                worker1Connection = factory.CreateConnection();
+                worker1Configuration = new WorkerConfiguration(worker1Connection, brokerWorkerRegistrationQueue);
+                worker1 = new Worker(worker1Configuration, serializer);
+
+                await Task.Delay(1000);
+
+                Assert.Greater(results.Count(), count);
+
+            }
         }
 
         [Test]

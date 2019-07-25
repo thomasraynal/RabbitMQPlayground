@@ -6,6 +6,7 @@ namespace RabbitMQPlayground.LoadBalancing
 {
     public interface IScheduledWorkload
     {
+        bool Redelivered { get; }
         IWorkload Workload { get; }
         IProducerDescriptor ProducerDescriptor { get; }
     }

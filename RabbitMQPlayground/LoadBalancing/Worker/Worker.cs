@@ -56,16 +56,15 @@ namespace RabbitMQPlayground.LoadBalancing
                 var body = arg.Body;
                 var correlationId = arg.BasicProperties.CorrelationId;
                 var producerId = arg.BasicProperties.ReplyTo;
+                var redelivered = arg.Redelivered;
 
                 try
                 {
 
                     var payload = _serializer.Deserialize<Payload>(body);
                     var workload = (IWorkload)_serializer.Deserialize(payload.WorkLoad, payload.WorkLoadType);
-                    var producerDescriptor = new ProducerDescriptor(producerId, correlationId);
-                    var scheduledWorkload = new ScheduledWorkload(workload, producerDescriptor);
-
-                    _channel.BasicAck(deliveryTag: arg.DeliveryTag, multiple: false);
+                    var producerDescriptor = new ProducerDescriptor(producerId, correlationId, arg.DeliveryTag);
+                    var scheduledWorkload = new ScheduledWorkload(workload, producerDescriptor, redelivered);
 
                     Schedule(scheduledWorkload);
 
@@ -139,28 +138,37 @@ namespace RabbitMQPlayground.LoadBalancing
         {
             foreach (var workload in _workloads.GetConsumingEnumerable(_cancel.Token))
             {
-                var result = (IWorkResult) await Handle(workload.Workload.Work, workload.Workload.Argument);
+                try
+                {
 
-                result.WorkerId = Id;
+                    var result = (IWorkResult)await Handle(workload.Workload.Work, workload.Workload.Argument);
 
-                var replyProperties = _channel.CreateBasicProperties();
-                replyProperties.CorrelationId = workload.ProducerDescriptor.CorrelationId;
-                replyProperties.ContentType = _serializer.ContentMIMEType;
-                replyProperties.ContentEncoding = _serializer.ContentEncoding;
+                    result.WorkerId = Id;
 
-                replyProperties.Type = result.GetType().ToString();
+                    var replyProperties = _channel.CreateBasicProperties();
+                    replyProperties.CorrelationId = workload.ProducerDescriptor.CorrelationId;
+                    replyProperties.ContentType = _serializer.ContentMIMEType;
+                    replyProperties.ContentEncoding = _serializer.ContentEncoding;
 
-                var replyMessage = _serializer.Serialize(result);
+                    replyProperties.Type = result.GetType().ToString();
 
-                _channel.BasicPublish(
-                      exchange: string.Empty,
-                      routingKey: workload.ProducerDescriptor.Id,
-                      mandatory: true,
-                      basicProperties: replyProperties,
-                      body: replyMessage);
+                    var replyMessage = _serializer.Serialize(result);
+
+                    _channel.BasicPublish(
+                          exchange: string.Empty,
+                          routingKey: workload.ProducerDescriptor.Id,
+                          mandatory: true,
+                          basicProperties: replyProperties,
+                          body: replyMessage);
 
 
-                SignalReadyForWork();
+                    SignalReadyForWork();
+
+                }
+                catch (Exception ex)
+                {
+                    _channel.BasicReject(deliveryTag: workload.ProducerDescriptor.DeliveryTag, requeue: !workload.Redelivered);
+                }
             }
         }
 
