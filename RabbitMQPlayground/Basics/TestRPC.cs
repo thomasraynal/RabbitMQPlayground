@@ -8,7 +8,7 @@ using RabbitMQ.Client.Events;
 using System.Threading;
 using System.Collections.Concurrent;
 
-namespace RabbitMQPlayground
+namespace RabbitMQPlayground.Basics
 {
     [TestFixture]
     public class TestRPC

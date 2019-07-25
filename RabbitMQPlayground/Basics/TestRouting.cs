@@ -7,7 +7,7 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Threading;
 
-namespace RabbitMQPlayground
+namespace RabbitMQPlayground.Basics
 {
     [TestFixture]
     public class TestRouting

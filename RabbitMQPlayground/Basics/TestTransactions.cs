@@ -6,16 +6,16 @@ using System.Threading.Tasks;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Threading;
+using RabbitMQ.Client.Exceptions;
 
 namespace RabbitMQPlayground.Basics
 {
     [TestFixture]
-    public class TestBasicConsume
+    public class TestTransactions
     {
- 
 
         [Test]
-        public async Task TestingBasicConsume()
+        public void TestingTransactionsKo()
         {
 
             string received_message = null;
@@ -24,6 +24,8 @@ namespace RabbitMQPlayground.Basics
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
+                channel.TxSelect();
+
                 channel.QueueDeclare(queue: "hello", durable: false, exclusive: false, autoDelete: true, arguments: null);
 
                 var consumer = new EventingBasicConsumer(channel);
@@ -41,74 +43,62 @@ namespace RabbitMQPlayground.Basics
 
                 channel.BasicPublish(exchange: "",
                                      routingKey: "hello",
+                                     mandatory: true,
                                      basicProperties: null,
                                      body: body);
 
+                channel.BasicPublish(exchange: "void",
+                     routingKey: "hello",
+                       mandatory: true,
+                     basicProperties: null,
+                     body: body);
 
-                await Task.Delay(200);
 
-                Assert.AreEqual(message, received_message);
+                Assert.Throws<AlreadyClosedException>(() =>
+                {
+                    channel.TxCommit();
+                });
 
-
-
+                Assert.IsNull(received_message);
             }
+
         }
 
         [Test]
-        public async Task TestWorkQueue()
+        public async Task TestingTransactionsOk()
         {
-            var args = new[] { "a", "b", "c" };
-            byte[] received_body = null;
-            string received_message =null;
 
-            var getMessage = new Func<string[], string>((arg) =>
-                {
-                    return ((arg.Length > 0) ? string.Join(" ", arg) : "Hello World!");
-                });
+            string received_message = null;
 
             var factory = new ConnectionFactory() { HostName = "localhost" };
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.QueueDeclare(queue: "task_queue",
-                                     durable: false,
-                                     exclusive: false,
-                                     autoDelete: true,
-                                     arguments: null);
+                channel.TxSelect();
 
-                channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+                channel.QueueDeclare(queue: "hello", durable: false, exclusive: false, autoDelete: true, arguments: null);
 
                 var consumer = new EventingBasicConsumer(channel);
+
                 consumer.Received += (model, ea) =>
                 {
-                    received_body = ea.Body;
+                    var received_body = ea.Body;
                     received_message = Encoding.UTF8.GetString(received_body);
-
-
-                    int dots = received_message.Split('.').Length - 1;
-                    Thread.Sleep(dots * 1000);
-
-
-
-                    channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
                 };
 
-                channel.BasicConsume(queue: "task_queue",
-                                     autoAck: false,
-                                     consumer: consumer);
+                channel.BasicConsume(queue: "hello", autoAck: true, consumer: consumer);
 
-
-                var message = getMessage(args);
-
+                string message = "Hello World!";
                 var body = Encoding.UTF8.GetBytes(message);
 
-                var properties = channel.CreateBasicProperties();
-                properties.Persistent = true;
-
                 channel.BasicPublish(exchange: "",
-                                     routingKey: "task_queue",
-                                     basicProperties: properties,
+                                     routingKey: "hello",
+                                     mandatory: true,
+                                     basicProperties: null,
                                      body: body);
+
+
+                channel.TxCommit();
 
                 await Task.Delay(200);
 
@@ -116,8 +106,6 @@ namespace RabbitMQPlayground.Basics
 
             }
 
-
         }
-
     }
 }

@@ -23,12 +23,8 @@ namespace RabbitMQPlayground.LoadBalancing
             {
                 var settings = new JsonSerializerSettings
                 {
-                    Formatting = Formatting.Indented,
                     TypeNameHandling = TypeNameHandling.Objects,
-
                 };
-
-                settings.Converters.Add(new AbstractConverter<IWork<int, DoSomethingResult>, DoSomething>());
 
                 return settings;
             };
