@@ -82,7 +82,8 @@ namespace RabbitMQPlayground.LoadBalancing
 
                     var error = new WorkErrorResult()
                     {
-                        ErrorMessage = "Unable to handle the work"
+                        ErrorMessage = "Unable to handle the work",
+                        WorkerId = Id
                     };
 
                     replyProperties.Type = typeof(WorkErrorResult).ToString();
@@ -138,7 +139,9 @@ namespace RabbitMQPlayground.LoadBalancing
         {
             foreach (var workload in _workloads.GetConsumingEnumerable(_cancel.Token))
             {
-                var result = await Handle(workload.Workload.Work, workload.Workload.Argument);
+                var result = (IWorkResult) await Handle(workload.Workload.Work, workload.Workload.Argument);
+
+                result.WorkerId = Id;
 
                 var replyProperties = _channel.CreateBasicProperties();
                 replyProperties.CorrelationId = workload.ProducerDescriptor.CorrelationId;

@@ -4,6 +4,7 @@ using RabbitMQ.Client;
 using RabbitMQPlayground.LoadBalancing.Shared;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -47,6 +48,51 @@ namespace RabbitMQPlayground.LoadBalancing
         }
 
         [Test]
+        public async Task ShouldLoadBalancedBetweenWorkers()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var producerConnection = factory.CreateConnection();
+            var worker1Connection = factory.CreateConnection();
+            var worker2Connection = factory.CreateConnection();
+            var brokerConnection = factory.CreateConnection();
+
+            var serializer = new JsonNetSerializer();
+
+            var producerConfiguration = new ProducerConfiguration(producerConnection, brokerWorkloadQueue, TimeSpan.FromSeconds(5));
+            var worker1Configuration = new WorkerConfiguration(worker1Connection, brokerWorkerRegistrationQueue);
+            var worker2Configuration = new WorkerConfiguration(worker2Connection, brokerWorkerRegistrationQueue);
+            var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
+
+            using (var broker = new Broker(brokerConfiguration, serializer))
+            using (var worker1 = new Worker(worker1Configuration, serializer))
+            using (var worker2 = new Worker(worker2Configuration, serializer))
+            using (var producer = new Producer(producerConfiguration, serializer))
+            {
+                await Task.Delay(500);
+
+                var tasks = Enumerable.Range(0, 2).Select(index => new Workload()
+                {
+                    Argument = 500,
+                    Work = new DoSomeHeavyWork()
+                });
+
+                var results = await Task.WhenAll(tasks.Select(work => producer.SendWork<DoSomeHeavyWorkResult>(work)));
+
+                Assert.AreEqual(2, results.Count());
+                Assert.AreEqual(2, results.Select(r => r.WorkerId).Distinct().Count());
+
+            }
+        }
+
+        [Test]
+        public async Task ShouldRecoverOnFailure()
+        {
+
+
+        }
+
+        [Test]
         public async Task ShouldSendMultipleWorksAndGetResults()
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
@@ -80,7 +126,7 @@ namespace RabbitMQPlayground.LoadBalancing
                 Assert.AreEqual("0123456789", doSomethingResult.Result);
 
 
-                var doAnotherThing= new Workload()
+                var doAnotherThing = new Workload()
                 {
                     Argument = 10,
                     Work = new DoAnotherThing()
@@ -129,10 +175,7 @@ namespace RabbitMQPlayground.LoadBalancing
                 Assert.IsFalse(result.IsError);
                 Assert.AreEqual("0123456789", result.Result);
 
-
             }
-
-
         }
 
     }

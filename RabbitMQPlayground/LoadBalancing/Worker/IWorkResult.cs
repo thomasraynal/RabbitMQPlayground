@@ -7,5 +7,6 @@ namespace RabbitMQPlayground.LoadBalancing
     public interface IWorkResult
     {
         bool IsError { get; }
+        Guid WorkerId { get; set; }
     }
 }

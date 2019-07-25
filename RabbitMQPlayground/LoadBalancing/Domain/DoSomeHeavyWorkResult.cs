@@ -4,11 +4,9 @@ using System.Text;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class WorkErrorResult : IWorkErrorResult
+    public class DoSomeHeavyWorkResult : IWorkResult
     {
-        public bool IsError => true;
-
-        public string ErrorMessage { get; internal set; }
+        public bool IsError { get; set; }
 
         public Guid WorkerId { get; set; }
     }
