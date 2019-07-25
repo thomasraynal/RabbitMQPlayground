@@ -98,7 +98,7 @@ namespace RabbitMQPlayground.LoadBalancing
 
         public void DoWork()
         {
-            foreach(var work in _workloads.GetConsumingEnumerable(_cancel.Token))
+            foreach (var work in _workloads.GetConsumingEnumerable(_cancel.Token))
             {
                 foreach (var worker in _workers.GetConsumingEnumerable(_cancel.Token))
                 {
@@ -118,10 +118,10 @@ namespace RabbitMQPlayground.LoadBalancing
                         mandatory: true,
                         basicProperties: properties,
                         body: replyMessage);
+
+                    break;
                 }
             }
         }
-
-
     }
 }

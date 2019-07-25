@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class DoSomething : IWork<int, DoSomethingResult>
+    public class DoSomething : WorkBase<int, DoSomethingResult>
     {
-        public Task<DoSomethingResult> Execute(int arg)
+        public override Task<DoSomethingResult> Execute(int arg)
         {
             var str = Enumerable.Range(0, arg)
                                              .Select(index => index.ToString())

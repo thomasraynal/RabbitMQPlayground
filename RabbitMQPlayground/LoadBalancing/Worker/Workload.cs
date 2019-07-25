@@ -4,10 +4,10 @@ using System.Text;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class Workload<TArgument, TResult> : IWorkload<TArgument, TResult> where TResult : class, IWorkResult
+    public class Workload : IWorkload
     {
-        public IWork<TArgument, TResult> Work { get; set; }
+        public IWork Work { get; set; }
 
-        public TArgument Argument { get; set; }
+        public object Argument { get; set; }
     }
 }

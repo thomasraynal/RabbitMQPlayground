@@ -33,8 +33,8 @@ namespace RabbitMQPlayground.LoadBalancing
             };
         }
 
-        [OneTimeTearDown]
-        public void OneTimeTearDown()
+        [TearDown]
+        public void TearDown()
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
@@ -47,7 +47,7 @@ namespace RabbitMQPlayground.LoadBalancing
         }
 
         [Test]
-        public async Task ShouldSendWorkAndGetResult()
+        public async Task ShouldSendMultipleWorksAndGetResults()
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
 
@@ -61,20 +61,69 @@ namespace RabbitMQPlayground.LoadBalancing
             var worker1Configuration = new WorkerConfiguration(worker1Connection, brokerWorkerRegistrationQueue);
             var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
 
-            //todo: IWorker<TWork>
             using (var broker = new Broker(brokerConfiguration, serializer))
-            using (var worker1 = new Worker<int, DoSomethingResult>(worker1Configuration, serializer))
+            using (var worker1 = new Worker(worker1Configuration, serializer))
             using (var producer = new Producer(producerConfiguration, serializer))
             {
                 await Task.Delay(500);
 
-                var workload = new Workload<int, DoSomethingResult>()
+                var doSomething = new Workload()
                 {
                     Argument = 10,
                     Work = new DoSomething()
                 };
 
-                var result = await producer.SendWork(workload);
+                var doSomethingResult = await producer.SendWork<DoSomethingResult>(doSomething);
+
+                Assert.IsNotNull(doSomethingResult);
+                Assert.IsFalse(doSomethingResult.IsError);
+                Assert.AreEqual("0123456789", doSomethingResult.Result);
+
+
+                var doAnotherThing= new Workload()
+                {
+                    Argument = 10,
+                    Work = new DoAnotherThing()
+                };
+
+                var doAnotherThingResult = await producer.SendWork<DoAnotherThingResult>(doAnotherThing);
+
+                Assert.IsNotNull(doAnotherThingResult);
+                Assert.IsFalse(doAnotherThingResult.IsError);
+                Assert.AreEqual(45, doAnotherThingResult.Result);
+
+            }
+
+        }
+
+        [Test]
+        public async Task ShouldSendWorkAndGetResult()
+        {
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+
+            var producerConnection = factory.CreateConnection();
+            var workerConnection = factory.CreateConnection();
+            var brokerConnection = factory.CreateConnection();
+
+            var serializer = new JsonNetSerializer();
+
+            var producerConfiguration = new ProducerConfiguration(producerConnection, brokerWorkloadQueue, TimeSpan.FromSeconds(5));
+            var workerConfiguration = new WorkerConfiguration(workerConnection, brokerWorkerRegistrationQueue);
+            var brokerConfiguration = new BrokerConfiguration(brokerConnection, brokerWorkloadQueue, brokerWorkerRegistrationQueue);
+
+            using (var broker = new Broker(brokerConfiguration, serializer))
+            using (var worker = new Worker(workerConfiguration, serializer))
+            using (var producer = new Producer(producerConfiguration, serializer))
+            {
+                await Task.Delay(500);
+
+                var workload = new Workload()
+                {
+                    Argument = 10,
+                    Work = new DoSomething()
+                };
+
+                var result = await producer.SendWork<DoSomethingResult>(workload);
 
                 Assert.IsNotNull(result);
                 Assert.IsFalse(result.IsError);

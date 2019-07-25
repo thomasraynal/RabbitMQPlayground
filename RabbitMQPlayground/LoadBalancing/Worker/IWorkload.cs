@@ -4,9 +4,9 @@ using System.Text;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public interface IWorkload<TArgument, TResult> where TResult : class, IWorkResult
+    public interface IWorkload
     {
-        IWork<TArgument, TResult> Work { get; }
-        TArgument Argument { get; }
+        IWork Work { get; }
+        object Argument { get; }
     }
 }

@@ -5,9 +5,7 @@ using System.Threading.Tasks;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    interface IWorker<TArgument, TResult> : IActor where TResult : class, IWorkResult
+    public interface IWorker : IActor
     {
-        void Schedule(IScheduledWorkload<TArgument, TResult> workload);
-        Task<TResult> Handle(IWork<TArgument, TResult> work, TArgument argument);
     }
 }

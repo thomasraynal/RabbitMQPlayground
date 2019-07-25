@@ -9,12 +9,12 @@ using RabbitMQ.Client.Events;
 
 namespace RabbitMQPlayground.LoadBalancing
 {
-    public class Worker<TArgument, TResult> : IWorker<TArgument, TResult> where TResult : class, IWorkResult
+    public class Worker : IWorker
     {
         private readonly IWorkerConfiguration _configuration;
         private readonly ISerializer _serializer;
         private readonly IModel _channel;
-        private readonly BlockingCollection<IScheduledWorkload<TArgument, TResult>> _workloads;
+        private readonly BlockingCollection<IScheduledWorkload> _workloads;
         private readonly CancellationTokenSource _cancel;
         private readonly Task _workProc;
         private readonly string _workerQueue;
@@ -29,7 +29,7 @@ namespace RabbitMQPlayground.LoadBalancing
             _serializer = serializer;
 
             _channel = _configuration.Connection.CreateModel();
-            _workloads = new BlockingCollection<IScheduledWorkload<TArgument, TResult>>();
+            _workloads = new BlockingCollection<IScheduledWorkload>();
 
             _self = new WorkerDescriptor() { Id = Id.ToString() };
 
@@ -61,9 +61,9 @@ namespace RabbitMQPlayground.LoadBalancing
                 {
 
                     var payload = _serializer.Deserialize<Payload>(body);
-                    var workload = (IWorkload<TArgument, TResult>)_serializer.Deserialize(payload.WorkLoad, payload.WorkLoadType);
+                    var workload = (IWorkload)_serializer.Deserialize(payload.WorkLoad, payload.WorkLoadType);
                     var producerDescriptor = new ProducerDescriptor(producerId, correlationId);
-                    var scheduledWorkload = new ScheduledWorkload<TArgument, TResult>(workload, producerDescriptor);
+                    var scheduledWorkload = new ScheduledWorkload(workload, producerDescriptor);
 
                     _channel.BasicAck(deliveryTag: arg.DeliveryTag, multiple: false);
 
@@ -112,7 +112,7 @@ namespace RabbitMQPlayground.LoadBalancing
 
         public Guid Id { get; private set; }
 
-        public void Schedule(IScheduledWorkload<TArgument, TResult> workload)
+        public void Schedule(IScheduledWorkload workload)
         {
             _workloads.Add(workload);
         }
@@ -145,7 +145,7 @@ namespace RabbitMQPlayground.LoadBalancing
                 replyProperties.ContentType = _serializer.ContentMIMEType;
                 replyProperties.ContentEncoding = _serializer.ContentEncoding;
 
-                replyProperties.Type = typeof(TResult).ToString();
+                replyProperties.Type = result.GetType().ToString();
 
                 var replyMessage = _serializer.Serialize(result);
 
@@ -166,7 +166,7 @@ namespace RabbitMQPlayground.LoadBalancing
             _cancel.Cancel();
         }
 
-        public async Task<TResult> Handle(IWork<TArgument, TResult> work, TArgument argument)
+        public async Task<object> Handle(IWork work, object argument)
         {
             return await work.Execute(argument);
         }

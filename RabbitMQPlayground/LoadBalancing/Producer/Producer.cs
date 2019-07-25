@@ -78,7 +78,7 @@ namespace RabbitMQPlayground.LoadBalancing
             return queueName;
         }
 
-        public Task<TResult> SendWork<TArgument, TResult>(IWorkload<TArgument,TResult> work) where TResult : class, IWorkResult
+        public Task<TResult> SendWork<TResult>(IWorkload work) where TResult : class, IWorkResult
         {
             var task = new TaskCompletionSource<IWorkResult>();
           
